@@ -1,0 +1,497 @@
+---
+title: "DA5020.Practicum 2"
+author: "Chenyao Xiao, Yicheng Zhang and Isabella Motha"
+date: "2022-11-13"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(RSQLite)
+library(knitr)
+```
+
+## Part 1 Customer Database Analysis
+
+Here we need to create a new SQLite database.
+```{r}
+mydb1 <- dbConnect(RSQLite::SQLite(), "my-db1.sqlite")
+```
+
+### 1
+
+The commands for importing data to the database are listed in the sql file. 
+<!--
+.open "my-db1.sqlite"
+CREATE TABLE customers(
+CustomerID INT PRIMARY KEY, 
+FirstName TEXT, LastName TEXT,
+StreetAddress TEXT, City TEXT,
+State TEXT, ZipeCode, Telephone,
+Purchases_Total NUMERIC);
+.mode csv
+.import customers.csv temp
+INSERT INTO customers SELECT * FROM temp;
+DROP TABLE temp;
+
+CREATE TABLE orders(
+OrderID INT PRIMARY KEY,
+CustomerID, SKU TEXT,
+Description TEXT, Cost NUMERIC,
+Year_Purchase NUMERIC);
+.import orders.csv temp
+INSERT INTO orders SELECT * FROM temp;
+DROP TABLE temp;
+
+CREATE TABLE Router_Info(
+RMAID INT PRIMARY KEY, 
+OrderID, Status TEXT,
+Step TEXT, Reason TEXT,
+CustomerID);
+.import Router_Info.csv Router_Info
+DELETE
+FROM
+    Router_Info
+WHERE
+    RMAID = 'RMAID';
+-->
+
+Here we found the headers are duplicated, thus we delete the first row to get the
+right Router_Info table.
+```{r}
+dbListTables(mydb1)
+```
+
+### 2
+
+We can check the data by selecting first five rows from each table. 
+```{r}
+dbGetQuery(mydb1, 'SELECT * FROM customers LIMIT 5;')
+dbGetQuery(mydb1, 'SELECT * FROM orders LIMIT 5;')
+dbGetQuery(mydb1, 'SELECT * FROM Router_Info LIMIT 5;')
+```
+
+By observing three tables, we can tell that they all have 499 observations and unique 
+primary keys. Since they all have customerID ,OrderID and RMAID in its own table 
+so each row of data should refer to a unique entity with its related in formations. 
+We should be able to join all these three tables to find out the complete information 
+about each observation. The primary key for customers table is customerID; for 
+order table is OrderID; and for Router_info table is RMAID.The three tables contains 
+different information are connected by customerID. The table orders and Router_info 
+are connected by customerID and orderID. If we want to join them we could do like this:
+
+```{r} 
+# we join 3 tables like this: 
+sql<-"SELECT * FROM orders JOIN customers ON orders.CustomerID = customers.CustomerID 
+JOIN Router_info ON Router_info.CustomerID = orders.CustomerID;"
+joinresult<-dbGetQuery(mydb1,sql)
+# check result:
+str(joinresult)
+```
+
+### 3
+
+```{r}
+sql_cd1.3 ="SELECT COUNT(CustomerID) FROM orders WHERE COST > 200;"
+dbGetQuery(mydb1, sql_cd1.3)
+```
+We create a query to get that 177 customers spent more than 200 dollars on the orders.
+
+### 4
+
+```{r}
+sql_cd1.4 ="SELECT *
+FROM customers
+JOIN orders ON orders.CustomerID = customers.CustomerID
+JOIN Router_Info ON Router_Info.CustomerID = orders.CustomerID;"
+df_join <-dbGetQuery(mydb1,sql_cd1.4)
+head(df_join)
+str(df_join)
+```
+We can first join two tables of customers and orders by CustomerID and then join Router_Info
+table as same. The data frame still contains 499 observations in total but 21 variables now, 
+we use direct join here. 
+
+### 5
+
+```{r}
+sql_cd1.5 ="SELECT orders.CustomerID, orders.OrderID, Description, 
+Purchases_Total, Year_Purchase
+FROM customers
+LEFT JOIN orders ON orders.CustomerID = customers.CustomerID
+LEFT JOIN Router_Info ON Router_Info.CustomerID = orders.CustomerID;"
+df_leftjoin <-dbGetQuery(mydb1,sql_cd1.5)
+str(df_leftjoin)
+```
+In this query, we select some basic columns from the tables using left join.
+
+### 6 
+
+The following SQL statement lists the number of customers in each city and their 
+average cost total, sorted low to high
+(Only include cities with more than 8 customers):
+```{r}
+sql_cd1.6 ="SELECT COUNT(Router_Info.CustomerID), City, AVG(Cost)
+FROM customers
+JOIN orders ON orders.CustomerID = customers.CustomerID
+JOIN Router_Info ON Router_Info.CustomerID = orders.CustomerID
+GROUP BY City
+HAVING COUNT(Router_Info.CustomerID) > 8
+ORDER BY COUNT(Router_Info.CustomerID);"
+df_bycity <- dbGetQuery(mydb1,sql_cd1.6)
+kable(df_bycity)
+```
+We can see that there are 6 cities meeting our query standard. Arlington had most
+customers of 15, but Kansas had the highest avarage cost over 180 dollars. 
+
+### 7 
+
+```{r}
+sql_cd1.7 ="SELECT Count (SKU) AS 'total_SKU', 
+COUNT ( DISTINCT Description ) AS 'total_description_types' 
+FROM orders 
+WHERE Cost>100;"
+dbGetQuery(mydb1,sql_cd1.7)
+```
+We used the count and count distinctly to know that, among all of 
+orders, those orders with cost more than 100, there are 8 distinct 
+descriptions types and 340 total SKU exit in the order table.
+
+### 8 
+
+```{r}
+sql_cd1.8 = "SELECT Year_Purchase, MIN(Cost), MAX(Cost), SUM(Cost), 
+COUNT(OrderID) AS order_numbers
+FROM orders
+GROUP BY Year_Purchase
+ORDER BY COUNT(OrderID) DESC;"
+df_yearorders <- dbGetQuery(mydb1,sql_cd1.8)
+kable(df_yearorders)
+```
+The query gets a new table showing us order cost information each year, including
+minimum cost, maximum cost, sum and the order numbers. The table is display 
+by descending order numbers. The year 2021 has the most orders.
+
+### 9 
+
+```{r}
+sql_cd1.9 = "SELECT FirstName, LastName,Status, Step,Reason, Purchases_Total 
+FROM customers 
+LEFT JOIN Router_info ON Router_info.CustomerID = customers.CustomerID 
+WHERE (customers.CustomerID BETWEEN 1001 AND 1021) 
+AND (Purchases_Total > 2) 
+AND (Purchases_Total < 10)
+ORDER by Purchases_Total;"
+df_purchase <- dbGetQuery(mydb1,sql_cd1.9)
+dim(df_purchase)
+kable(head(df_purchase))
+```
+For this query, we want to know the order status, order steps, reason and
+full name of customer who has a customerID between 1001
+and 1021 and has a total purchase more than 2 but less than 10. It seems Dean Bernard and 
+Brandi Rush have least purchases in these group of customers 
+
+### 10 
+
+```{r}
+sql_cd1.10 = "SELECT Year_Purchase, LastName,
+COUNT(orders.OrderID) AS order_numbers, Description
+FROM customers
+LEFT JOIN orders ON orders.CustomerID = customers.CustomerID
+WHERE Description LIKE '%Basic Switch%'
+AND LastName LIKE 'B%'
+GROUP BY Year_Purchase;"
+kable(dbGetQuery(mydb1, sql_cd1.10))
+```
+Here we use wildcard selecting all customers with Last name starting with "B" with 
+"Basic Switch" orders and grouping them by Year_purchase.
+
+### 11
+
+```{r}
+sql_cd1.11 = "SELECT Year_Purchase, 
+COUNT(orders.OrderID) AS order_numbers, AVG(Cost)
+FROM orders
+LEFT JOIN customers ON customers.CustomerID = orders.CustomerID
+WHERE City = 'Washington' OR City = 'Miami'
+GROUP BY Year_Purchase;"
+kable(dbGetQuery(mydb1, sql_cd1.11))
+```
+Here we select two cities: Washington and Miami. The query gets order information and
+cost average in these cities each year.
+
+```{r}
+dbDisconnect(mydb1)
+```
+
+## Part 2  HIV Database Analysis
+
+### 1
+
+<!--
+.open "my-db2.sqlite"
+CREATE TABLE hiv_info (
+Entity VARCHAR, Year NUMERIC, 
+number_of_people_living_with_HIV INT,
+deaths_less_than5 NUMERIC, deaths_more_than70 NUMERIC,
+deaths_5to14 NUMERIC, deaths_15to49 NUMERIC,
+deaths_50to69 NUMERIC, deaths_total NUMERIC,
+new_cases_of_hiv_infection NUMERIC,
+number_of_people_infected_with_hiv NUMERIC,
+PRIMARY KEY (Entity, Year)
+);
+CREATE TABLE country_info (
+Country VARCHAR, Year NUMERIC, 
+Country_Population NUMERIC,
+GDP_per_capital NUMERIC,
+unemployment_rate FLOAT,
+School_enrollment_rate FLOAT,
+PRIMARY KEY (Country, Year)
+);
+.mode csv
+.import HIV_info.csv hiv_info
+.import country_info.csv country_info
+DELETE
+FROM
+    hiv_info
+WHERE
+    Year = 'Year';
+DELETE
+FROM
+    country_info
+WHERE
+    Country = 'Country';
+-->
+
+```{r}
+mydb2 <- dbConnect(RSQLite::SQLite(), "my-db2.sqlite")
+str(dbGetQuery(mydb2, 'SELECT * FROM hiv_info;'))
+str(dbGetQuery(mydb2, 'SELECT * FROM country_info;'))
+```
+
+There are 44 observations and 11 variables in the HIV_info table and 44 observations
+, 6 variables in the country_info table. From these two tables we can see that 
+we need to combine country/Entity and year as the primary keys
+in order to join them. 
+
+### 2
+
+```{r}
+sql_cd2.2 = "SELECT Country, hiv_info.Year, new_cases_of_hiv_infection, 
+School_enrollment_rate
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.Year = country_info.Year
+WHERE Country = 'North America';"
+df_onlyNA <- dbGetQuery(mydb2,sql_cd2.2)
+# Check structure
+str(df_onlyNA)
+# Check summary statistics
+summary(df_onlyNA)
+kable(df_onlyNA)
+```
+
+For this query, we joined the two table with
+```country_info ON Entity = Country AND hiv_info.Year = country_info.Year``` 
+to find out the year, new cases of hiv infection and school enrollment rate
+of North America.
+
+### 3
+
+The column "number_of_people_living_with_HIV" had a problem that the values were more
+than the country population so we need to discard this column. Therefore we choose "number_of_people_infected_with_hiv" minus "deaths_total" to calculate people 
+living with hiv. Also here we need to cast the values as float numbers to get decimal outputs.
+To calculate the death rate of hiv, we use the deaths_total divided by all people infected.
+
+```{r}
+sql_cd2.3 = "SELECT Country, hiv_info.Year, Country_Population, 
+CAST((number_of_people_infected_with_hiv - deaths_total) AS FLOAT)*100
+/CAST(Country_Population AS FLOAT) AS 'percentage_of_people_living_with_HIV', 
+CAST(deaths_total AS FLOAT)*100 /CAST(number_of_people_infected_with_hiv AS FLOAT)
+AS 'percentage_deaths_from_HIV'
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.Year = country_info.Year
+WHERE Country = 'North America';"
+df_onlyNApercentage <- dbGetQuery(mydb2,sql_cd2.3)
+kable(df_onlyNApercentage)
+```
+By using the ```Cast()``` clause we got the float result of percentage
+of people living with hiv and percentage of deaths. We calculate the
+percentage of people living with hiv by: 
+```(number_of_people_infected_with_hiv - deaths_total)*100/Country_Population```.
+
+We get the death percentage by:```deaths_total*100/number_of_people_infected_with_hiv```.
+
+Still, we only want data from North America this time. The table we got shows that 
+from 2007 to 2017, the percentage of people living with HIV
+increased from 0.382% to 0.433% while the percentage of deaths decreased from 0.984%
+to 0.484%. This is reasonable because more therapies can help reduce deaths while more
+people are getting threatened by HIV. 
+
+### 4 
+
+By observing to the ```number_of_people_living_with_HIV``` we know that this is a 
+problematic column and we might want to take some extra steps to tidy this column 
+before we use it. If we remove the last 3 digits of each number in 
+```number_of_people_living_with_HIV``` then it will
+have the same number as ```number_of_people_infected_with_hiv```, thus these two 
+columns actually refer to same group of people and if we want to use 
+```number_of_people_living_with_HIV``` in our query then we need to divide it by 
+1000 here:
+
+```{r}
+sql_cd2.4="SELECT Country ,SUM(Country_Population) 
+AS Sum_country_population, 
+CAST(SUM(number_of_people_living_with_HIV/1000*100) AS FLOAT)/CAST(SUM(Country_Population) AS FLOAT) 
+AS 'HIV_patient_percentage' 
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.Year = country_info.Year
+WHERE Country != 'North America' GROUP BY Country;"
+df_2.4 <-dbGetQuery(mydb2,sql_cd2.4)
+kable(df_2.4)
+```
+We calculated the total population of a country from 2007-2017 and its total HIV 
+patient percentage in this period by using ```number_of_people_living_with_HIV/1000``` 
+to divide the total population
+to get the HIV patient percentage of Bermuda, Canada and United States. And the 
+```group by``` clause here is to help us to get the ```HIV_patient_percentage``` 
+of these 3 countries individually. The US has the highest HIV patient percentage.
+
+### 5 
+
+#### Query 1
+
+This query helps to investigate relationship between infection rate and unemployment 
+rate in Canada. Here we use new cases divided by healthy population 
+(```Country_population minus number_of_people_infected_with_hiv```)
+to get infection rate. We select data with School_enrollment_rate >99.5 to 
+minimise the effect of school enrollment.
+```{r}
+sql_cd2.5.1 = "SELECT Country, hiv_info.Year, 
+CAST(new_cases_of_hiv_infection AS FLOAT)/
+CAST(Country_population-number_of_people_infected_with_hiv AS FLOAT) 
+AS infection_rate, unemployment_rate
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.year = country_info.year
+WHERE Country = 'Canada' AND School_enrollment_rate >99.5;"
+df_5.1 <- dbGetQuery(mydb2, sql_cd2.5.1)
+cor(log(df_5.1$infection_rate),df_5.1$unemployment_rate)
+model_5.1 <- lm(log(infection_rate)~unemployment_rate,data=df_5.1)
+summary(model_5.1)
+kable(df_5.1)
+```
+We can find they are negatively correlated. If unemployment increases, the infection rate
+will drop.If there is more people without work, the infection of HIV will go down. 
+The p-value 0.296 shows that the correlation is not significant.
+
+#### Query 2
+
+```{r}
+sql_cd2.5.2 ="SELECT Country, hiv_info.Year, 
+CAST(deaths_15to49 AS FLOAT)/CAST(deaths_total AS FLOAT) 
+AS death_15to49_percentage, CAST(deaths_50to69 AS FLOAT)/CAST(deaths_total AS FLOAT) 
+AS death_50to69_percentage
+FROM hiv_info INNER JOIN country_info ON Entity = Country AND hiv_info.year = country_info.year
+WHERE Country = 'United States' AND hiv_info.Year BETWEEN 2011 AND 2015;"
+df_5.2 <- dbGetQuery(mydb2, sql_cd2.5.2)
+kable(df_5.2)
+```
+This query suggests that the percentage of deaths between 50 to 69 age is increasing 
+from 2011 to 2015, which means the survival time of people infected with HIV could be longer 
+as medical conditions gets better.
+
+#### Query 3
+
+Query number 3 we want to calculate the decreasing case of HIV by each year in Bermuda.
+
+```{r}
+sql_cd2.5.3 <-"SELECT hiv_info.Year,number_of_people_infected_with_hiv 
+AS this_year_HIV_total, 
+number_of_people_infected_with_hiv - LAG (number_of_people_infected_with_hiv) 
+OVER (ORDER BY hiv_info.Year ASC) 
+AS HIV_decrease_cases,
+LEAD (number_of_people_infected_with_hiv, 1) OVER (ORDER BY hiv_info.Year ASC) 
+AS next_year_HIV_total 
+FROM hiv_info INNER JOIN country_info ON Entity = Country AND hiv_info.year = country_info.year
+WHERE Country = 'Bermuda';"
+df_5.3<-dbGetQuery(mydb2, sql_cd2.5.3)
+# check result:
+kable(df_5.3)
+```
+
+In this query we used the ```LAG``` and ```over``` clause to find out that Bermuda
+is keeping a decreasing trend each year on total HIV infected patient. 
+
+#### Query 4
+
+Query number 4, in this query we want to know if the HIV death rate is the same year
+with the highest unemployment rate and we use the death rate of HIV per 1000000 people
+on different years in Canada.
+```{r}
+sql_cd2.5.4 <-"SELECT hiv_info.Year, Country, Country_Population, 
+CAST(deaths_total * 1000000 AS FLOAT)/CAST(Country_Population AS FLOAT) 
+AS 'deaths_rate',GDP_per_capital,unemployment_rate, School_enrollment_rate 
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.year = country_info.year
+WHERE Country = 'Canada' 
+ORDER BY (CASE WHEN School_enrollment_rate IS NULL 
+THEN unemployment_rate 
+ELSE unemployment_rate 
+END);"
+df_5.4<-dbGetQuery(mydb2, sql_cd2.5.4)
+# check result:
+kable(df_5.4)
+```
+
+We want to order the output table by ```School_enrollment_rate``` but if it is null
+then we will alternatively order by ```unemployment_rate```(and since we knew there
+are null value in school enrollment rate so we know it will order by unemployment rate)
+.As we can see that there is some null value in the ```School_enrollment_rate``` so it
+is ordered by ```unemployment_rate``` instead with the help of ```CASE WHEN``` clause.
+The highest death rate was on 2007 but we actually have the lowest unemployment rate this
+year, so the HIV death rate might have no huge impact on the unemployment rate since they
+are not in the same year.  
+
+#### Query 5.
+
+In this query we want to find out the rank of ```new_cases_of_hiv_infection``` each 
+year and partition it by country:
+```{r}
+sql_cd2.5.5 <-"select Country, hiv_info.Year,Country_Population,new_cases_of_hiv_infection , 
+dense_rank() over (partition by Country order by new_cases_of_hiv_infection DESC) 
+AS 'rank' 
+FROM hiv_info INNER JOIN country_info ON Entity = Country 
+AND hiv_info.year = country_info.year;"
+df_5.5<-dbGetQuery(mydb2, sql_cd2.5.5)
+# check result:
+kable(df_5.5)
+```
+
+The ```partition by``` helps us to get a rank within same country but different 
+years and ```dense_rank()``` clause is a window function, which ranking in descending 
+ordered partition of ```new_cases_of_hiv_infection```. From the result we can see that 
+the Bermuda has the most ```new_cases_of_hiv_infection``` on 2010, 2011, 2012, 2013; 
+Canada reached peak at 2017; North America reaches peak at 2017; and US has the 
+most new cases on 2017. However, I think the new cases of HIV is increasing accordingly 
+with the country population and we can actually use ggplot2 to visualization our result.
+
+```{r}
+ggplot(df_5.5, aes(x = Year, y = new_cases_of_hiv_infection, 
+                  color="new hiv cases per year" )) +
+    geom_line()+
+  geom_line(aes(y=Country_Population, color="country population per year")) + 
+  scale_x_continuous(breaks=seq(2007, 2017, 1))+
+  facet_wrap(. ~ Country)+
+  theme_bw()
+```
+
+So, we can see that basically for every countries but Bermuda have a increasing 
+trending of total population and their HIV new cases are relatively have no change 
+in trend at all. Bermuda have a overlapped result but given the fact that its total 
+population is not huge and each year of new HIV cases has no more than 10 we still 
+can say that all of these countries have a ideal HIV new cases each year. 
+The HIV disease in these countries is under control. 
+
+```{r}
+dbDisconnect(mydb2)
+```

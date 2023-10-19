@@ -1,0 +1,177 @@
+---
+title: "DA5020.A7.Yicheng.Zhang"
+author: "YICHENG ZHANG"
+date: "2022-10-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE}
+library(httr)
+library(ggplot2)
+library(rvest)
+library(dplyr)
+library(tidyverse)
+```
+
+# Question 1.
+
+# 1.
+```{r}
+wikiurl <- read_html("https://en.wikipedia.org/wiki/List_of_countries_by_percentage_of_population_living_in_poverty")
+Webpage <- wikiurl %>%
+  html_table(., fill = T)
+poverty <- Webpage[[2]]
+povertyData <- poverty %>%
+  rename(
+    less_than_1.90 = "< $1.90[1][5]",
+    less_than_3.20 = "< $3.20[6]",
+    less_than_5.50 = "< $5.50[7]"
+    )
+povertyData <- povertyData %>% mutate('less_than_1.90' = as.numeric(sub("%", "", povertyData$less_than_1.90, fixed = TRUE))/100,
+                                        'less_than_3.20' = as.numeric(sub("%", "", povertyData$less_than_3.20, fixed = TRUE))/100,
+                                        'less_than_5.50' = as.numeric(sub("%", "", povertyData$less_than_5.50, fixed = TRUE))/100,
+                                        'Year' = as.numeric(povertyData$Year))
+# check loaded table:
+
+str(povertyData)
+```
+
+# 2.
+```{r}
+tableq2<-povertyData %>% 
+    group_by(Continent) %>% 
+    summarise( mean_5.50= mean(less_than_5.50),
+               sd_5.50 = sd(less_than_5.50)  ) %>% 
+    arrange(mean_5.50)
+
+# table view of our result:
+tableq2
+```
+```{r}
+# visualization
+visual2<-ggplot(tableq2,aes(x = Continent, y = mean_5.50)) +
+        geom_bar(stat = 'identity') +
+        geom_errorbar(aes(ymin=mean_5.50-sd_5.50, ymax=mean_5.50+sd_5.50), width=.2,
+                      position = position_dodge(0.9))
+
+visual2
+
+```
+
+From the result we can see that Europe is the richest continent and then is Asia&Europe, South America, North America, Asia, Oceania, and Africa is the poorest continent.In Europe, there are only 4.9% people living with less than $5.50 a day, with standard deviation 9. Asia&Europe continent also have a very lower rate about 6.85%,and only 4.5% standard deviation which indicate that the poverty situation in the europe&asia is fine overall. The south america and north america have similar mean, but the north america has a higher standard deviation which indicate that the income inequality situation here is worse than south america. Asia has the biggest standard deviation which indicate it has the worst income inequality in all these continents. The Oceania has the second highest mean value and standard deviation which tells us the poverty situation there is also not ideal. Africa has the highest mean with a relatively low standard deviation which means that this continent has the worst poverty situation and the world definitely want to help them to get through it. 
+
+# 3.
+```{r}
+tableq3<-povertyData %>% 
+  select(Country,less_than_5.50,Continent,Year)%>%
+    arrange(desc(less_than_5.50)) %>% 
+    top_n(10,less_than_5.50)
+
+# table view of the result
+tableq3
+
+```
+```{r}
+# visualization
+visual3<-ggplot(tableq3,aes(x = Country, y = less_than_5.50, fill = Continent)) +
+        geom_bar(stat = 'identity') +
+        labs( y = "Percentage",
+              x = "Country") +
+        geom_text(aes(label = less_than_5.50))
+
+visual3
+```
+
+From the result above we can see that the South sudan has most population living under 5 dollar per day (98.44%). 9 of these countries from Africa and only Yemen from Asia. Mali has the lowest percent among these 10 countries but it is still very high (93.29). We should definitely take some actions in Africa to help solve the sever poverty condition there and this result just reminds us to do so.
+
+# 4.
+```{r}
+tableq4<-povertyData %>% 
+    arrange((less_than_5.50))%>%
+  select(Country,less_than_5.50,Year, Continent)
+
+# table view of the result:
+tableq4<-head(tableq4,5)
+tableq4
+```
+```{r}
+# visualization
+visual4<-ggplot(tableq4, aes(x = Country, y = less_than_5.50, fill = Continent)) +
+        geom_bar(stat = 'identity') +
+        labs( y = "Percentage",
+              x = "Country") +
+        geom_text(aes(label = less_than_5.50))
+
+visual4
+```
+
+From the result above there are 5 countries with the least population have live less than 5 dollar each day in the world and they are from Europe and Asia: Belarus, Finland, Iceland, Azerbaijan and United Arab Emirates. The highest percentage for people living under 5 dollar per day among these countries is Belarus and Finland which is 0.1%. Azerbaijan and United Arab Emirates from countries from Asia and they even have zero percent of people who live less than 5 dollar per day which is incredible. If the data we got from Wikipedia is correct, then those are probably the richest countries in the world. We can then find the lowest percentage of population having a income of less than 1.90 and 3.20 dollar per day:
+
+```{r}
+tableq4.1<-povertyData %>% 
+    arrange((less_than_3.20))%>%
+  select(Country,less_than_3.20,Year, Continent)
+
+# table view of the result:
+tableq4.1<-head(tableq4.1,5)
+tableq4.1
+```
+
+```{r}
+tableq4.2<-povertyData %>% 
+    arrange((less_than_1.90))%>%
+  select(Country,less_than_1.90,Year, Continent)
+
+# table view of the result:
+tableq4.2<-head(tableq4.2,5)
+tableq4.2
+```
+
+By finding the lowest percentage of population having a income of less than 1.90 and 3.20 dollar per day, we can see that there are 2 countries from Asia ans 3 countries from Europe have least people living less than 3.20 dollar per day; 1 country from Asia, 4 countries from Europe have least people living less than 1.90 dollar per day; Again, this result indicates the income inequality of different regions in the world, and most of the rich countries are from Europe and the poverty situation there is basically gone. For the Asia it also has some of countries without the concern about poverty but from the result we got in previous questions, we know that Asia is definitely not a place without poverty but rather, this result, further proved that Asia is a very unbalanced continent. Since the results of all these 3 standards are only from two continents, we say the global poverty and income inequality is still a big problem we need to face. 
+
+# 5.
+
+```{r, warning=FALSE}
+tableq5<-povertyData %>% 
+  filter( Continent == c("Africa", "Oceania")) %>% 
+  pivot_longer( c(less_than_1.90,less_than_3.20,less_than_5.50), names_to = "value", values_to = "percentage")
+# table view of the result:
+head(tableq5)
+```
+```{r}
+# visualization:
+visual5<-ggplot(tableq5) +
+    geom_boxplot( mapping = aes( x = Continent, y = percentage )) +
+    facet_wrap(vars(value))
+
+visual5
+```
+
+For the ```less_than_1.90```, region from Africa is left skewed and Oceania has skewness to the right;for ```less_than_3.20``` the skewness of the Africa is left and for the Oceania it is right skewed, for ```less_than_$5.50``` Africa is left skewed and Oceania is left skewed as well. In general the countries from Africa have a higher median value than Oceanian countries. In the ```less_than_1.90```, the Oceania has less 25 percent quantile. For the ```less_than_3.20``` and ```less_than_$5.50```, the Oceania has larger 5 percentage quantile. In this case the  We can see there are outliers exits for Africa from ```less_than_$5.50``` group.
+
+
+```{r}
+africa<-povertyData %>% 
+ filter( Continent == 'Africa') %>% 
+ arrange(desc(less_than_5.50))
+
+data1<-africa[,1:6]
+
+q <- quantile(data1$less_than_5.50, probs=c(.25, .75), na.rm = FALSE)
+Interq <- IQR(data1$less_than_5.50)
+
+Lower_boundary <- q[1] - 1.5*Interq
+Upper_boundary <- q[2] + 1.5*Interq
+
+# find outliers:
+
+outlier <-data1%>%filter(less_than_5.50<Lower_boundary | less_than_5.50> Upper_boundary)
+outlier
+```
+
+We use the quantile() to get the first and third quartiles. Furthermore, we compute first quantile - 1.5IQR to get the lower limit for outliers, and similarly, we compute third quantile + 1.5IQR to get the upper bound. With such method, we have these 4 outliers countries in the ```less_than_5.50``` from Africa: Algeria, Tunisia, Mauritius and Seychelles.

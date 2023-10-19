@@ -1,0 +1,723 @@
+---
+title: "INSH5301 FINAL Solution"
+author: "YICHENG ZHANG"
+date: "2022-12-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,message=FALSE,warning=FALSE}
+library(caret)
+library(psych)
+library(leaps)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+library(class)
+library(ggbiplot)
+library(factoextra)
+```
+
+# 1.
+
+```{r}
+set.seed(1)
+# as there is no specific times I need to roll these dice
+# I will assume I roll them 10000 times:
+roll<-10000
+# we first initiate a times variable
+# this variable will indicate the total times we have a result between15 and 20
+times<-0
+prob_15to20 <- function(x) {
+  # sample(1:6, 5, replace = T) is the output of the showing dice result
+  # we store them here, 6 indicates we have 6 sides and 5 means 5 dice
+  # this is the sum of each dice each row
+  # we store them here and as total sample pool
+  total <- replicate(x, sum(sample(1:6, 5, replace = T)))
+  # loop over the total sample pool
+  for (i in 1:x) {
+    if (total[i] >= 15 & total[i] <= 20) {
+      # everytime we have a result matchs then times should add one 
+      times<-times+1
+    }
+  }
+  # calculate the probability
+  return(times/roll)
+}
+
+# probability of get 15 to 20 in total after 10000 rolls
+prob_15to20(roll)
+```
+The returned value above here should be the approximate solutions of the probability of getting between 15 and 20 (inclusive) as the total amount of 10000 rolls.
+
+# 2.
+
+a.
+
+$H_{o}$: The mean of the x and y is same
+
+$H_{a}$: The true difference between x and y is not 0
+
+```{r}
+set.seed(1)
+# initiate variables:
+x <- rnorm(100)
+epsilon <- rnorm(100)
+y <- 0.1+2*x+epsilon
+# t.test:
+t.test(x,y,paired=T)
+```
+Since here we have a p value larger than 0.05, we fail to reject the null hypothesis that the mean of the x and y's observations is same.
+
+b.
+
+We first want to have the first 5 numbers of x and y:
+```{r}
+meanX<- mean(x[1:5])
+meanX
+meany<- mean(y[1:5])
+meany
+```
+Since we know 
+
+$$se_{diff} = \sqrt{se_{x}^{2} + se_{y}^{2}}$$ 
+
+and $se_{x} = sd_{x} / \sqrt{n_{x}}$, $se_{y} = sd_{y} / \sqrt{n_{y}}$. So we can calculate the standard error of x and y first:
+
+```{r}
+seX<-sd(x[1:5])/sqrt(5)
+sey<-sd(y[1:5])/sqrt(5)
+seX
+sey
+```
+
+and we now can calculate the 
+
+$$se_{diff} = \sqrt{se_{x}^{2} + se_{y}^{2}}=\sqrt{0.4297899^2+1.035892^2}=1.121513$$ 
+
+and then we calculate the test statistics with :
+
+$$T=(x_{bar}-y_{bar})/se_{diff}=(0.1292699-(-0.03860587))/1.121513=0.1496869$$
+
+and the last one we need to calculate here is the df:
+
+$$df = \frac{se_{diff}^{4}}{se_{x}^{4}/(n_{x}-1) + se_{y}^{4}/(n_{y}-1) }=1.121513^4/(0.4297899^4/(5-1)+1.035892^4/(5-1))=5.337491$$
+
+Since we now know the df is 5.337491 and we can calculate the p value now:
+
+```{r}
+qt(c(0.975,0.025),5.337491)
+```
+
+So we have a reject region as [2.522455,-2.522455] and the test statistics we got (0.1496869) actually lies within it, we fail to reject the null hypothesis that the mean of the x and y's first 5 observations is same.
+
+c.
+
+```{r}
+sdx<-sd(x[1:5])
+sdy<-sd(y[1:5])
+```
+
+Since we know the z score of the 0.01 CI level is :
+
+```{r}
+qnorm(0.995)
+```
+we also know the formula of 0.01 level CI here is and the mean is fixed:
+$$CI=\bar y\pm z\frac{sd}{\sqrt n_{new}}=-0.03860587\pm qnorm(1-0.01/2)\times\frac{2.316324}{\sqrt n_{new}}$$ 
+
+and in the same time we know the $se$ will also change as we are having a different n value, but the $sd$ will be fixed:
+
+$$se=sd_{y}/\sqrt{n_{new}}=2.316324/\sqrt{n_{new}}$$
+
+and we are asked to get the min total number ($n_{new}$) so that we can reject the null and claim the true mean of the population is different from 0. If we want to do so then the CI level should not include the 0 as if a confidence interval contains zero then we would say there is strong evidence that there is not a ‘significant’ difference between the population means. And this case, we certainly want to have no 0 included in the CI. By observing through the formula of the CI we provided the above, we know that lower bound of the CI will definitely less than 0 as $qnorm(0.995)\times\frac{2.316324}{\sqrt n_{new}}$ will be a positive figure and if we use a negative number -0.03860587 to minus it, the result will still less than 0. So we can only try to lower our upper bound to less than 0 and we have a function as following:
+```{r}
+min_total<-function(){# start from 6
+  n<-6 # start from 6
+  while (n){
+    if(-0.03860587+qnorm(0.995)*(sdy/sqrt(n))<0){
+      return(n)
+    }
+    else {
+      n=n+1
+    }
+  }
+}
+min_total()
+```
+and let's try out the min total of 23886 to see if it works:
+
+```{r}
+# se of the y
+yse<-sdy / sqrt(23886)
+pt((meany-0)/yse,23886-1)*2
+```
+
+Well, this result is still larger than 0.01 and this is reasonable as we used the ```qnorm(0.995)``` in the function which is not precise enough, so let's try add one to the result;
+```{r}
+yse<-sdy / sqrt(23887)
+pt((meany-0)/yse,23887-1)*2
+```
+still not work, keep adding:
+```{r}
+yse<-sdy / sqrt(23888)
+pt((meany-0)/yse,23888-1)*2
+```
+still not work, keep adding:
+```{r}
+yse<-sdy / sqrt(23889)
+pt((meany-0)/yse,23889-1)*2
+```
+There we go, now we have a p value less than 0.01 and we can reject the null to claim that the true mean $\mu$ of the population is different from 0 at the p = 0.01. And the minimum total number of additional observations we would need would be 23889-5 which is 23884.
+
+# 3.
+
+# a.
+```{r}
+set.seed(1)
+y3 <- 0.1+0.2*x+epsilon
+m1<-lm(y3~x)
+summary(m1)
+```
+```{r}
+# we use the coefficient of x and std error to get the 95% CI here:
+0.1989396 + qt(0.975, 98) * 0.10773# 95%ci upper bound
+0.1989396 - qt(0.975, 98) * 0.10773# 95%ci lower bound
+```
+
+From the result, we can tell that R^2 value as 0.03363 which means the majority of the Y could not be explained by the x. The coefficient of the x indicates the slope of the line of the best fit and we actually can know that if we increase the x by 1 then the y will also increase by 0.19894.The standard error here can tell us the average distance of each point to the line of the best fit and we have a std error really approaching to 0.01 here. The 95% CI here is [-0.01484708,0.4127263].
+
+
+# b.
+
+```{r}
+# use the test statistics from the previous question we got:
+pt(coef(summary(m1))[[6]], lower.tail = FALSE, 98) * 2
+```
+
+This result tells us that it corresponds to the regression results which demonstrates that at the p=0.05 threshold level, we may able to accept the null hypothesis as the coefficient is 0, implying that if we change the x, it will not effect on the value of y.
+
+# c.
+
+```{r}
+pf(3.41,1,98,lower.tail = F)
+
+```
+Since by referring to the text book we can know that the F test mainly used to measure the overall fitness of the model by checking if we have coefficients different from 0, and this result with a p value as 0.06782021 actually tells us that we need to accept the null hypothesis that we don't have coefficients significantly different from 0 and this also verified what we mentioned in the last question. In the same time, this p value also helps us to conclude that R-squared is nearly equal zero, and the correlation between the model and dependent variable is not statistically significant.
+
+# d.
+```{r}
+# we first move the mean of x and  to here and sd of x:
+meanX
+meany3<-mean(y3[1:5])
+meany3
+sdx
+```
+```{r}
+# the first 5 obs of x and y3
+x5<-x[1:5]
+y3.5<-y3[1:5]
+```
+
+```{r}
+# sd of the new y
+sdy3.5<-sd(y3.5)
+# correlation of x and new y:
+cov<-cov(x5,y3.5)
+sdy3.5
+cov
+```
+
+Since we know the coefficient formula is :
+
+$$y = \beta_{0} + \beta_{1}x$$
+and we need to calculate the $\beta_{0}$ and $\beta_{1}$ in this case. For the $\beta_{1}$ the formula is :
+
+$$r = \frac{\textrm{Cov}(x,y)}{ s_{x} s_{y}}=0.5473849/(0.9610394\times0.6342866) = \beta_{1} \frac{s_{x}}{s_{y}}=0.8979788$$
+which means :
+
+$$\beta_{1} = \frac {\frac{r}{s_{x}}}{s_{y}}=\frac{0.8979788}{(\frac{0.9610394}{0.6342866})}= 0.5926666$$
+Since we know that the slpe is
+
+$$\beta_{0} =  \bar{y} - \beta_{1} \bar{x}= -0.2712917-0.5926666\times 0.1292699 = -0.3479057$$
+
+Therefore we now have the coefficient formula as:
+
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666x$$
+
+Now let's calculate the Y with the first 5 value of the x:
+
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666\times-0.6264538=-0.7191839$$
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666\times0.1836433=-0.2390664$$
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666\times-0.8356286= -0.8431549$$
+
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666\times1.5952808=0.5975639$$
+
+$$y = \beta_{0} + \beta_{1}x=-0.3479057 + 0.5926666\times0.3295078=-0.1526174$$
+
+Since we know:
+
+$$se_{\hat{y}} = \sqrt{ \frac{\sum (y_i-\hat{y}_i)^2 }{n-2}}$$
+and the upper side of the $se_{\hat{y}}$ formula is actually SSE, so we can calculate the result this way:
+
+$$se_{\hat{y}} = \sqrt{ \frac{\sum (y_i-\hat{y}_i)^2 }{n-2}}= \sqrt\frac{SSE}{n-2}=\sqrt\frac{36.05417}{4-2}=4.245831$$
+
+$$SSE = \sum_{i} (y_{i} - \hat{y}_{i})^{2}=(-0.6456574-(-0.7191839))^2 + (0.1788445-(-0.2390664))^2 + (-0.9780474 -(-0.8431549))^2 + (0.5770849-0.5975639)^2+(-0.4886831-(-0.1526174))^2=0.3116112$$
+We can first get the TSS here: 
+
+$$TSS = \sum_{i} (y_{i} - \bar{y})^{2}=(-0.6456574-(-0.2712917))^2 + (0.1788445-(-0.2712917))^2 + (-0.9780474 -(-0.2712917))^2 + (0.5770849-(-0.2712917))^2+(-0.4886831-(-0.2712917))^2=1.609278$$
+Since we know:
+
+$$se_{\hat{y}} = \sqrt{ \frac{\sum (y_i-\hat{y}_i)^2 }{n-2}}$$
+and the upper side of the $se_{\hat{y}}$ formula is actually SSE, so we can calculate the result this way:
+
+$$se_{\hat{y}} = \sqrt{ \frac{\sum (y_i-\hat{y}_i)^2 }{n-2}}= \sqrt\frac{SSE}{n-2}=\sqrt\frac{0.3116112}{5-2}= 0.3222893$$
+
+and we also have this formula for the formula of the coefficient:
+
+$$se_{\beta_1} = se_{\hat{y}} \frac{1}{\sqrt{\sum (x_i - \bar{x})^2}}=\frac{0.3222893}{\sqrt{(-0.6264538-0.1292699)^2+(0.1836433-0.1292699)^2+(-0.8356286 -0.1292699)^2+(1.5952808-0.1292699)^2+(0.3295078-0.1292699)^2}}=0.1676775$$
+
+By referring to the test book, we have: 
+
+$$R^{2} = \frac{TSS - SSE}{TSS}=(1.609278-0.3116112)/1.609278=0.8063658$$
+Since the formula of the adjust R^2 is here, $df_{t}=n−1 \ and \  df_{e}=n−k−1$ (where k is the number of variables and it is 1 (only x). So let's calculate:
+
+$$\textrm{adjusted } R^2 = \frac{TSS/df_t - SSE/df_e}{TSS/df_t}=\frac{1.609278/(5-1) - 0.3116112/(5-1-1)}{1.609278/(5-1)}$$
+
+Now, we have a  coefficient on x as 0.5926666, its standard error as 0.1676775, and the adjusted R2 as 0.7418211.
+
+# 4.
+
+# a.
+```{r}
+set.seed(1)
+y4 <-0.1+0.2*x-0.5*x^2+epsilon
+m2 <- lm(y4 ~ x+I(x^2))
+summary(m2)
+
+```
+By referring to the P value we got here, since both of them less than 0.05, we could say that x and x^2 are statistically significant.
+
+# b.
+
+Since we have been given the formula of the new Y as $y4 =0.1+0.2\times x-0.5\times x^2+epsilon$, so we ca just apply x as 1 and 2 into this formula directly here:
+```{r}
+# we ignored the epsilon since they both have it:
+(0.1 + 0.2 * 2 - 0.5 * 2^2) - (0.1 + 0.2 * 1 - 0.5 * 1^2)
+
+```
+The exact effect on y of increasing x by 1 unit from 1 to 2 would be -1.3.
+
+# c.
+
+Since we need to use what we had from 4a, so I will use the model I created in 4a ```m2``` here for this question:
+```{r}
+# let's load the coefficient column in to the formula
+m2$coefficients[1]+m2$coefficients[2]*(-0.7)+m2$coefficients[3]*((-0.7)^2)-(m2$coefficients[1]+m2$coefficients[2]*(-0.5)+m2$coefficients[3]*((-0.5)^2))
+```
+Based on the coefficients estimated from 4(a), the effect on y of changing x from -0.5 to -0.7 is -0.1919733 .
+
+
+# 5.
+
+# a.
+```{r}
+set.seed(1)
+x2 <- rnorm(100, mean=-1, sd=1)
+y5 <- 0.1+0.2*x-0.5*x*x2+epsilon
+# again, we ignored the epsilon since they both have it:
+(0.1+0.2*mean(x2)-0.5*mean(x)*1)-(0.1+0.2*mean(x2)-0.5*mean(x2)*0)
+```
+Based on the known coefficients, what is the exact effect of increasing x2 from 0 to 1 with x held at its mean is the y will be -0.05444368.
+
+# b.
+```{r, warning=FALSE}
+# let's first create the regression model:
+m3<- lm(y5 ~ x + x2 + I(x*x2))
+summary(m3)
+# set value of x and x2 for prediction:
+#predict(m3,data.frame(x=-0.7,x2=1))-predict(m3, data.frame(x=-0.5, x2=1))
+m3$coefficients[1]+m3$coefficients[2]*(-0.7)+m2$coefficients[3]*(1^2)+m3$coefficients[4]*(-0.7*(1)^2)-(m3$coefficients[1]+m3$coefficients[2]*(-0.5)+m2$coefficients[3]*(1^2)+m3$coefficients[4]*(-0.5*(1)^2))
+```
+Based on the regression-estimated coefficients, what is the effect on y of shifting x from -0.5 to -0.7 with 𝑥2 held at 1 is 0.1041363  .
+
+# c.
+So for this F test we should have a hypothesis as following
+```{r}
+m4 <- lm(y5~x)
+summary(m4)
+```
+Since we know (https://youtu.be/Bs1koG5U2QU)
+
+$$F = \frac{(R_{u}^2-R_{r}^2)/(k-1)}{(1-R_{u}^2)/(n-k-1)}$$
+The u here indicates the unrestricted complete model (```m3```) and r indicates restricted (reduced) model (```m4```), and since we have 3 additional variables in the unrestricted complete model (```m3```) so k=3 and df1=k-1=2. In the denominator, the n=100, k=2, so df2=100-2-1=97. now let's take out the R^2 value for both models:
+```{r}
+summary(m3)
+summary(m4)
+```
+
+and we can now apply the R^2 of complete model 0.7828 and R^2 of reduced model 0.1832 into formula we had above:
+
+$$F = \frac{(R_{u}^2-R_{r}^2)/(k-1)}{(1-R_{u}^2)/(n-k-1)}=\frac{(0.4729-0.1832)/(2-1)}{(1-0.4729)/(100-2-1)}=53.31227$$
+and now we can calculate the p value of the F test:
+```{r}
+pf(53.31227,1,97,lower.tail=F)
+```
+
+Since we got a p value less than 0.05 and we can reject the null hypothesis to conclude that the complete model might be preferred by the F test rather than the reduced model since the complete model will include more confounding factors even though the x2 may not really meaningful in this model but the interaction term may still somehow improved the model. It actually makes sense as we note that the R^2 has gone up considerably between complete model and the reduced one. That is because there is a very strong correlation between y and interaction terms.
+
+# 6.
+
+# a.
+
+```{r}
+set.seed(1)
+f <- c(rep("a", 100), rep("b", 100), rep("c", 100))
+# in distinguishing with previous variables we call x1, x2 differently here
+x6.1 <- c(rnorm(100, 1, 2), rnorm(100, 0, 1), rnorm(100, 1, 0.5))
+x6.2 <- c(rnorm(100, 1, 2), rnorm(100, 1, 1), rnorm(100, 0, 0.5))
+# we use cbind here so that we can attach the cluster column later easily
+# meanwhile, I think the prompt actually says we need a dataset with 300 obs
+# if we rbind then it will only be 2 obs
+v <- as.data.frame(cbind(x6.1, x6.2, f))
+v$f <- as.factor(v$f)
+```
+
+```{r}
+set.seed(1)
+kout <- kmeans(v[,1:2], 3, 25)
+centroids<-kout$centers
+topvars_centroid1 <- centroids[1,order(centroids[1,])]
+topvars_centroid2 <- centroids[2,order(centroids[2,])]
+topvars_centroid3 <- centroids[3,order(centroids[2,])]
+# check out the kout result with high scoring factors:
+tail(topvars_centroid1)
+tail(topvars_centroid2)
+tail(topvars_centroid3)
+```
+
+```{r}
+# we apply the cluster into the dataframe:
+v$cluster <- kout$cluster
+table(v$f, v$cluster)
+```
+From this result we can tell that our dataset was been classified into 3 clusters. The first centroid has a cluster for numbers around 0; and the second centroid has a cluster with a result of number from 1.028320 to 2.777811; and the third centroid has a cluster with numbers from 0 to 1.4261561. There are some overlaps between first&third cluster and second&third clusters. After we apply the cluster result into the dataframe we can see that the cluster a has very bad result since it has data points distributed evenly in two clusters and the correct hit is low; and b is better with about 60% correctly hitted data points, the c has the most ideal result as its data points' distribution is concentrated and around 90% hit to the correct cluster. Now let's calculate the true mean by filter out 3 dataset based on the f:
+```{r}
+# true center:
+v$x6.1<-as.numeric(v$x6.1)
+v$x6.2<-as.numeric(v$x6.2)
+a_class <- v %>%filter(f=="a")
+c(mean(a_class$x6.1),mean(a_class$x6.2))
+b_class <- v %>%filter(f=="b")
+c(mean(b_class$x6.1),mean(b_class$x6.2))
+c_class <- v %>%filter(f=="c")
+c(mean(c_class$x6.1),mean(c_class$x6.2))
+```
+
+```{r}
+# centroids:
+centroids
+```
+So here we can compare the centroids with the true center,though they are not vey similar but there still some traces for us to recognize their features and pair them up. In both of them, we have a center with range around the 0 ([-0.03780808,0.96086576] vs [-0.6477379,0.39957780]); and then a center with range from negative to around 1 ([-0.07850055,1.4261256] vs [-0.03780808,0.96086576]); and the last one we have a center with range bigger than 1 ([1.103204,1.217775] vs [1.0283202,2.77781098])
+
+# b.
+
+```{r}
+v<-subset(v, select = -c(f,cluster) )
+```
+```{r}
+v$x6.1<-as.numeric(v$x6.1)
+v$x6.2<-as.numeric(v$x6.2)
+```
+```{r}
+#bfi2 <- as.data.frame(scale(v))
+# calculate the principal components of the dataseT
+pcaA <- prcomp(v)
+pcaA1 <- pcaA$rotation[,1]
+# calculate total variance explained by each principal component
+var_explained <- pcaA$sdev^2 / sum(pcaA$sdev^2)
+covm <- cov(v)
+eigenm <- eigen(covm)
+plot(eigenm$values,type="b")
+plot(cumsum(eigenm$values)/sum(eigenm$values),ylim=c(0,1))
+# I refereed to the https://www.statology.org/scree-plot-r/ to have a better visualization
+qplot(c(1:2), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+```
+```{r}
+# let's also try rbind result:
+v1 <- as.data.frame(rbind(x6.1, x6.2))
+pcaA <- prcomp(v1)
+pcaA1 <- pcaA$rotation[,1]
+covm <- cov(v1)
+eigenm <- eigen(covm)
+# calculate total variance explained by each principal component
+var_explained <- pcaA$sdev^2 / sum(pcaA$sdev^2)
+plot(eigenm$values,type="b")
+qplot(c(1:2), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+```
+From both result of the cbind and rbind we can tell that the first column of factors can actually explained about 58% of the entire population and the rbind result also gives us a very similar result that the main part could been explained by only one of the entire factor population. The main result why we have a such wired result is because that the x1 and x2 we created are actually related to each other as a group of their factor share the same mean and sd. The x2 can explain about 45% of the entire dataset which is also a big part of the entire population, so I would say, given the result of the PCA and similarity of x1 and x2 factors, we could keep only the factors of x1, though x2 also takes a big part of the dataset.
+
+# 7.
+
+```{r}
+df<-read.csv("massachussets_crime_final.csv")
+```
+
+```{r}
+# we first see how many empty values included in this data:
+colSums(is.na(df))
+```
+
+Ok, it seems only a few of them are missing values, so I want to just remove them:
+```{r}
+df<-na.omit(df)
+colSums(is.na(df))
+```
+by observing through the data, we also found out there are some ',' exist in the numeric value which made it actually a character and we want to remove them. Also, we don't need the city column here:
+```{r}
+# create binary value:
+#df$Murder_MANSLAUGHTER[df$Murder_MANSLAUGHTER!=0]<-1
+#df$Arson[df$Arson!=0]<-1
+# change into factors:
+#df$Murder_MANSLAUGHTER<-as.factor(df$Murder_MANSLAUGHTER)
+#df$Arson<-as.factor(df$Arson)
+#df$Murder_MANSLAUGHTER<-as.numeric(df$Murder_MANSLAUGHTER)
+#df$Arson<-as.numeric(df$Arson)
+# remove , 
+df$Population <- gsub(",", "", df$Population)
+df$Violent.crime <- gsub(",", "", df$Violent.crime)
+df$Robbery<- gsub(",", "", df$Robbery)
+df$Aggravated.assault<- gsub(",", "", df$Aggravated.assault)
+df$Property.crime<- gsub(",", "", df$Property.crime)
+df$Burglary<- gsub(",", "", df$Burglary)
+df$Larceny..theft<-gsub(",", "", df$Larceny..theft)
+```
+```{r}
+# save a df here for later usage
+dfq9<-df
+# remove city
+df<-subset(df, select = -c(City) )
+# as numeric:
+df <- sapply(df,as.numeric)
+df<-as.data.frame(df)
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#df$Arson<-as.factor(df$Arson)
+#df$Murder_MANSLAUGHTER<-as.factor(df$Murder_MANSLAUGHTER)
+str(df)
+```
+now let's see how many outliers exist in the data. Outliers increase the variability in the data, which decreases statistical power. Consequently, excluding outliers can cause our results to become statistically significant. For admission numbers here, we need to find out outliers. When we expect our data has a normal distribution, Z-scores may help us to identify how modd the real observation is.
+
+The degree of standard deviations around the mean decrease for each value is represented by the Z-score.
+The Z score equals to zero refers to the mean value, and in order to calculate it, we need to take the original
+admissions, calculate the mean and the use it to minus origin admission value, then divide by the SD to get
+the Z-score of the admission.
+
+A huge the distance between an variable’s Z-score and zero can indicate they are actually extravagant. Z
+± 3 is a widely accepted cut-off point for identifying outliers, and we will apply the same logistics in our
+visualization here.Number of outliers in each column is shown in the figure below::
+
+```{r}
+#df1 <- sapply(df1,as.numeric)
+
+outliers <- function(x){
+  # use z score for outliers
+  sum(abs((x[!is.na(x)] - mean(x, na.rm = TRUE)) / sd(x , na.rm = TRUE)) > 3)
+}
+
+enframe(sapply(df[, 1:9], outliers)) %>% 
+  ggplot() +
+  geom_bar( mapping = aes(x=name, y = value ), stat='identity') +
+  coord_flip() +
+  labs( x = "variable name", y = "# of outliers", title = "total outliers in each numeric variables")
+```
+
+Well the outliers aren't that much in the dataset, and given the fact our dataset is not very big so that we don't want to lose more observations by removing outliers. We can just leave outliers here.
+
+The violent.crime is the sum of the Murder_MANSLAUGHTER, Rape,Robbery, Aggravated.assault; the property crime is the sum of the "Burglary and Larceny..theft and Motor_vehicle_theft. So let's split the data set before we dive in:
+```{r}
+# this df only for crime types
+types<-df%>%select(Population,Violent.crime,Property.crime,Arson)
+# this is for crimes
+crimes<-df%>%select(Population,Murder_MANSLAUGHTER,Rape,Robbery,Aggravated.assault,Burglary,Larceny..theft,Motor_vehicle_theft,Arson)
+```
+So, for this dataset, my hypothesis is that I think the population might be associated with crimes in the table and population may somehow vary due to the unsteadily community with crimes. We first want to see the regression result:
+```{r}
+# correlation matrix result:
+cor(df, use='complete.obs')
+# visualization:
+corrplot(cor(df, use='complete.obs'), method="circle")
+#corrplot(cor(df), method = 'square', order = 'FPC', type = 'lower', diag = FALSE)
+```
+The correlation result tells us that the population has strong correlations with basically every variables in the original data set, but as we separated the dataset into two new datasets, we can first try to use population regress all variables in each datasets to see what we can get from them:
+```{r}
+lm1<-lm(Population~Violent.crime+Property.crime , data = types)
+summary(lm1)
+```
+Well, this result tells us that the Population is highly associated with property crime since it has a p value less than 0.05 and we want to double check our result by using another table:
+```{r}
+lm2<-lm(Population~. , data = crimes)
+summary(lm2)
+```
+Now, this regression result just provide us more details that Murder_MANSLAUGHTER,Robbery,Aggravated.assault,Larceny..theft are highly associated with population of a certain county in MA. And the Larceny..theft has the smallest p value here which makes sense as this is actually one of the comm-est crime in the US which might cause people want to move away from their communities.So, for now, our null hypothesis will be rejected and conclude that the county population might be associated with crimes, and population may vary due to the unsteadily community with certain crimes exist.  However, we might want to refine our model by using a back ward stepwise feature selection, and we mainly focus on the BIC value and R^2 to decide which model is the best for us:
+```{r, warning=FALSE}
+model <- regsubsets(Population~ ., data = crimes, method="backward")
+sumresult <- summary(model)
+model.subsets <- cbind(sumresult$which, sumresult$bic, sumresult$rsq, sumresult$adjr2)
+model.subsets <- as.data.frame(model.subsets)
+colnames(model.subsets)[10:12] <- c("BIC","Rˆ2","adj Rˆ2")
+# check result:
+model.subsets
+
+```
+Given the R^2 result are all pretty much similar we will mainly focus on BIC to find the best model for us. The model 3 has the smallest BIC here and we want to try out ```Population~Robbery+Aggravated.assault+Larceny..theft```:
+```{r}
+lm3<-lm(Population~Robbery+Aggravated.assault+Larceny..theft , data = crimes)
+summary(lm3)
+```
+So all of the independent variables has a significant impact toward the dependent variable, though we are not required to use better model for prediction but I still want to say this model worth a try if we want to predict the population of certain country.
+
+My conclusion from these regressions is that our null hypothesis will be rejected and we say that the county population might be associated with crimes, which means population may vary due to the unsteadily community with certain crimes exist. A place with more crimes listed above with p vlaue less than 0.05 might have a lower population overall since people prefer to live safely. 
+
+# 8.
+
+This time I will intentionally to create a wrong regression here:
+```{r}
+lm3<-lm(df$Population ~df$Property.crime)
+summary(lm3)
+```
+It seems the property.crime is significant to population, and let's try to regress the population with larceny..theft+property.crime:
+```{r}
+lm3.1<-lm(df$Population ~df$Larceny..theft+df$Property.crime)
+summary(lm3.1)
+```
+Here we can referring to the text book to claim that we have a chained causation error in these variables.crime and in the second regression we can tell that Property.crime actually has no effect on Population at all; and it shows the danger of trusting in bivariate regressions. Either chained causation or spurious association error might exist here and we may need more investigation about their sociology or political science knowledge to interrupt which of these two error causes Property.crime no longer impact the population after we regress it with Larceny..theft. My guess here is that this is more like a spurious association issue, Larceny..theft -> population and Larceny..theft -> Property.crime by using the provided example in the text book chapter 9.1.
+
+# 9.
+
+Assume we have no idea about this dataset at all and we want to first have a general idea of the crime population by using a cluster dendrogram plot:
+```{r}
+hout2 <- hclust(dist(crimes[,2:9]),method="complete")
+plot(hout2,labels=FALSE)
+abline(a=1700,b=0,col="red")
+```
+```{r}
+# a different visualization:
+set.seed(1)
+res.km <- kmeans(scale(crimes[,2:9]), 2, nstart = 25)
+fviz_cluster(res.km, data = crimes[,2:9],
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+
+```
+```{r}
+# a different visualization:
+# and let's try k=3 this time
+set.seed(1)
+res.km <- kmeans(scale(crimes[,2:9]), 3, nstart = 25)
+fviz_cluster(res.km, data = crimes[,2:9],
+             palette = c("#2E9FDF", "#00AFBB", "#E7B800"), 
+             geom = "point",
+             ellipse.type = "convex", 
+             ggtheme = theme_bw()
+             )
+
+```
+All of these 3 clusters result tell us we should have about two or three clusters for different crimes in general. And one of the cluster will be able to include much bigger content of the entire population, and there is actually another small cluster exist in the bigger cluster if we look at the clustering dendrogram so we can even divide the entire population into 3 clusters if we want. Since the case of the murder_manslaughter, rape and arson are relatively fewer than other crimes and given the fact that the clustering will mainly based on the case numbers of each crimes, the general logic for this clustering dendrogram in this case are based on the frequency of different crimes, and we can divide them into common crimes,relatively common crimes and uncommon crimes. The uncommon crimes should refer to very extreme cases like murder and arson and as we can see that it is really rarely happen so that we almost have a linear cluster in the last cluster plot.
+
+However, since our assumption at the begaining is regarding to the association between Population and crimes, so we want to dive deeper now by using PCA to see if we can have some results that related to what we got from early regression result:
+
+```{r}
+pca1<-prcomp(crimes[,2:9])
+# calculate total variance explained by each principal component
+var_explained <- pca1$sdev^2 / sum(pca1$sdev^2)
+qplot(c(1:8), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+
+```
+From what we found above we can tell that the first factor can explain about 90% of the total population and the elbow part occurs at the index 2-3 which are the part we mainly want to focus on, after that, all the rest population in a very smooth trend and this result can testify what we found in the precious cluster result that we have very common crimes which will take majority of the population.
+```{r}
+pca1<-prcomp(crimes[,2:9])
+# PC1 eigen value
+# the amount of variance in that direction
+sort(pca1$rotation[,1])
+# PC2 eigen value 
+sort(pca1$rotation[,2])
+
+```
+This result shows that on the one side we have rare type of crimes which include murder_manslaughter, rape and arson, but on the other side we have more common crimes which includes Larceny..theft, Aggravated.assault. The general logic in this case are based on the frequency of different crimes.
+```{r}
+# this plot provide a result from each specific crime's perspective
+pca_res <- prcomp(crimes[,2:9], scale. = TRUE)
+ggbiplot(pca_res, labels=crimes$Population)
+# this plot provide a result from general crime type's perspective
+pca_res <- prcomp(types[,2:3], scale. = TRUE)
+ggbiplot(pca_res, labels=types$Population)
+```
+So, by using the ```ggbiplots``` we have above two plots and we can tell that no matter from the perspective of specific crime or general crime's type, they all gives us an idea that the population are in the opposite direction of the crimes. This indicates what we found in the previous regression result that the crimes is associated with population of a county and people all tend to live peacefully away from crimes.
+
+# 10.
+
+```{r}
+# create a new table called df10
+df10<-df
+```
+
+```{r}
+# convert all data into X offenses by 100.000 habitats
+df10$Violent.crime<-df10$Violent.crime/df10$Population*100000
+df10$Murder_MANSLAUGHTER<-df10$Murder_MANSLAUGHTER/df$Population*100000
+df10$Rape<-df10$Rape/df$Population*100000
+df10$Robbery<-df10$Robbery/df$Population*100000
+df10$Aggravated.assault<-df10$Aggravated.assault/df10$Population*100000
+df10$Property.crime<-df10$Property.crime/df10$Population*100000
+df10$Burglary<-df10$Burglary/df10$Population*100000
+df10$Larceny..theft<-df10$Larceny..theft/df$Population*100000
+df10$Motor_vehicle_theft<-df10$Motor_vehicle_theft/df$Population*100000
+df10$Arson<-df10$Arson/df10$Population*100000
+```
+
+```{r}
+# same regression as we did in q8
+lm3.2<-lm(Population ~Property.crime,data=df10)
+summary(lm3.2)
+
+lm3.3<-lm(Population ~Larceny..theft+Property.crime,data=df10)
+summary(lm3.3)
+```
+and if we go back to see what we have in Q9:
+```{r}
+pca1<-prcomp(crimes[,2:9])
+# PC1 eigen value
+# the amount of variance in that direction
+sort(pca1$rotation[,1])
+# PC2 eigen value 
+sort(pca1$rotation[,2])
+```
+For those crimes that belong to the property.crime they are all on the other side of the rare (uncommon) crimes. And if we consider these crimes in general:
+```{r}
+# this plot provide a result from general crime type's perspective
+pca_res <- prcomp(types[,2:3], scale. = TRUE)
+ggbiplot(pca_res, labels=types$Population)
+```
+Well, this time we can have regression result that very different from previously question 8 output because both of the larceny theft and the property crime are still having strong influence toward the population at this time. But if we compare with question 9 result we can say this result is also reasonable because that the larceny theft (or the property crime in general) as one of the commonest crimes on the opposite side of the rare (uncommon) crimes and it will certainly has statistically significant impact toward the population as we transfer them into more precise data.Though, we know there might be some casual pathways issue in this regression result but I would say if we combine it with the cluster/PCA result we got in the previous question, this result also makes sense and explained our alternative hypothesis in some levels that population are effected by the crimes and people may tend to live in a stable place without many crimes.

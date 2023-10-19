@@ -1,0 +1,190 @@
+---
+title: "DA5020.A9.YICHENG.ZHANG"
+author: "YICHENG ZHANG"
+date: "2022-11-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{R,message=FALSE, warning=FALSE}
+rm(list = ls())
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+library(tinytex)
+```
+
+# 1. 
+```{r, message=FALSE}
+df <- read_csv("https://data.sfgov.org/api/views/rkru-6vcg/rows.csv?accessType=DOWNLOAD")
+# inspect the data
+str(df)
+summary(df)
+glimpse(df)
+# view data:
+head(df)
+tail(df)
+```
+
+```{r}
+# see column names of that data:
+colnames(df)
+```
+
+By looking at the stracture of the data we can see that there are 2496 observations and 12 variables.The name of each column is listed above. 2 of these variables are numeric values: ```Activity Peiod``` means the year and month of a specific fly and ```passengers Count``` means the total passengers on this fly.
+
+# 2.
+
+```{r}
+# we first want to tidy up our data little bit. Set the activity period into the correct year/month/date format:
+df1 <- df %>% 
+  mutate(Date = as.Date(paste0(`Activity Period`, "01"), format="%Y%m%d"))%>%
+  mutate(Year = year(Date), Month = month(Date))
+
+# then we want only the domestic fly trip and occur in the march. 
+dfq2 <- df1 %>% 
+  filter(`GEO Summary` == 'Domestic')%>%
+  filter(Month == 3) %>% 
+  group_by(Year) %>% 
+  summarise( total_passengers = sum(`Passenger Count`))
+
+# table view:
+dfq2
+
+# visualization
+ggplot(dfq2, aes(x = Year, y = total_passengers)) +
+  geom_point()+
+  geom_line(color="blue") +
+  annotate(geom="text", x=2018, y=3579413, 
+             label="Peak point of the total passengers in March")+
+  scale_x_continuous(breaks=seq(2006, 2022, 1))+
+  labs( y = "total passengers in March", title = "Total Passengers of March from 2006-2022", caption = "Data source: https://data.sfgov.org/")+
+  theme(plot.title = element_text(hjust = 0.5))
+  
+```
+
+From the result we can tell that from 2006 to 2018 we are having a very steady increasing trend of total passengers in march each year, and 2018 is also the peak point of this trend. However, start from 2018, we have a very huge decreasing of passengers on march and it decreased dramatically from 2019 to 2020, I think it mainly due to the outbreak of the COVID_19 pandemic and most people canceled their travel plan. Start from 2021, we hit the bottom point of the total passengers and then the trend starts to recover due to the travel policy in the US got back to normal. 
+
+# 3.
+
+```{r}
+# this is our predict result:
+predict2019<-sum(dfq2[11:13,2])/3
+predict2019
+```
+```{r}
+# this is real result from previous table:
+dfq2[14,2]
+```
+```{r}
+# our error is:
+# use actual minus predicted value:
+round(3449863-predict2019)
+# transfer it into rate to make our comparison more straightforward:
+# we will use same appraoch (the percentage error value) in the later part of this assignment as well:
+error<-abs(predict2019-3449863)/predict2019*100
+error
+```
+
+From the result we can tell that our prediction for the 2019 march total passengers should be 3385803 and the actual total passenger is 3449863. The error is 64060 by using what we predicted to against the actual value ,so,if we transfer it into percentage error rate, our error rate is 1.892008% which is pretty low!
+
+# 4.
+
+```{r}
+# we apply the different weights to the respective year and devided by the total weights
+# this is our predicted value:
+(dfq2[11,2] *3+dfq2[12,2]*5+ dfq2[13,2]*7)/(3+5+7)
+```
+
+```{r}
+# error this time:
+# use actual minus predicted value:
+3449863-3432674
+# our error rate this time:
+abs(3432674-3449863)/3432674*100
+```
+
+From the result we can tell that our prediction for the weighted 2019 march total passengers should be 3432674 and the actual total passenger is 3449863. The error is 17189 this time, and if we transfer it into percentage, our error rate is 0.5007466% which is better than last time! The weighted moving average prediction model is more precise than the simple moving average model.
+
+# 5.
+
+```{r}
+# By referring to the class vedio, we can have following function:
+# use data start from 2008
+dfq5 <- dfq2[3:17,] 
+dfq5$predict_total_passengers <- 0
+dfq5$error_value <- 0
+# initialize the first predict value:
+dfq5$predict_total_passengers[1] <- dfq2$total_passengers[3]
+alpha <- 0.7
+
+for (i in 2:nrow(dfq5)) {
+  dfq5$predict_total_passengers[i] <- dfq5$predict_total_passengers[i-1] + (alpha * dfq5$error_value[i-1])
+  # use actual minus predicted value:
+  dfq5$error_value[i] <-  round(dfq5$total_passengers[i] - dfq5$predict_total_passengers[i])
+}
+
+# view the result of the predict table:
+dfq5
+
+```
+```{r}
+# error this time:
+# use actual minus predicted value:
+round(dfq5$total_passengers[dfq5$Year==2019]-dfq5$predict_total_passengers[dfq5$Year==2019])
+# we find out the error rate this time 
+abs(dfq5$predict_total_passengers[dfq5$Year==2019] - dfq5$total_passengers[dfq5$Year==2019])*100/dfq5$predict_total_passengers[dfq5$Year==2019]
+
+```
+
+From the table result we can see that we have the predicted passengers for 2019 in march as 3495868	 and the actual total passengers is 3449863	which is 46006 (error value -46006) less than we predicted. We have a error rate of 1.315996% this time and this is actually higher than the 0.5007466% from last question we got by using the weighted moving average prediction model. Therefore I would say the weighted moving average prediction model is better than the exponential smoothing prediction.
+
+# 6.
+
+```{r}
+lm_predict<-lm(total_passengers ~ Year, data = dfq2[3:13,])
+lm_predict
+```
+
+Therefore we now have a linear regression predicting formula here: 
+
+$$total\ passengers=131769\times Year-262394559$$
+
+```{r}
+# we apply 2019 and 2020 into our formula:
+-262394559+131769*c(2019,2020)
+```
+
+```{r}
+# calculate the error:
+# use actual minus predicted value:
+3449863-3647052
+1431537-3778821
+# calculating the error rate:
+abs(3647052-3449863)*100/3647052
+abs(3778821-1431537)*100/3778821
+
+```
+
+From the result we can tell that our predicted total passengers for 2019 and 2020 are 3647052 and 3778821. However, the actual number of total passengers in march of these two years are 3449863 and 1431537. The error of 2019 is -197189 (with an error rate of 5.406805%); the error of 2020 is -2347284 (with an error rate of 62.11683%), both of these two errors is higher than previous predictions (especially for the second one) and I won't consider these two prediction result as valid and we may want to be careful about whether we want to use linear regression model as prediction tool for this case. Time varying data may not suitable to use a linear regression for prediction when we cannot apply very specific time but only using a general aggregated years' result. 
+
+# 7.
+
+```{r}
+# we first calculate the MSE of exponential model using the dfq5 table from previous question:
+# we use data from 2008-2018 only:
+dfq7.1<-dfq5[1:11,]
+dfq7.1$squared_error<-dfq7.1$error_value^2
+sum(dfq7.1$squared_error)/11
+```
+
+```{r}
+# we now calculate the MSE for linear model using the dfq5 table and linear regression model from previous question:
+lm_result <- lm_predict$coefficients[2] * dfq5[,1] + lm_predict$coefficients[1]
+sum((lm_result[1:11,] - dfq5[1:11,2])^2)/11
+```
+From the result above, we know the MSE of the exponential model is 34909597642, and the MSE of the linear regression model is 5017266497. Thus, now we can say the linear regression model from Q6 has the smallest MSE, which is more precise than the exponential model. 

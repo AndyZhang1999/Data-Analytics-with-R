@@ -1,0 +1,170 @@
+---
+title: "DA5020.A6.YICHENG.ZHANG"
+author: "YICHENG ZHANG"
+date: "2022-10-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(RSQLite)
+library(DBI)
+library(dplyr)
+library(ggplot2)
+```
+
+# Question 1
+
+## 1.
+```{R}
+#sqlite> .open imdb.db
+#sqlite> .tables
+#movie_info
+#sqlite> CREATE TABLE director_info (
+#   ...> Director_ID INT PRIMARY KEY,
+#   ...> Director_Name VARCHAR NOT NULL
+#   ...> );
+#sqlite> .tables
+#director_info  movie_info
+```
+
+We now have two tables in our imdb.db database: director_info and movie_info.
+
+## 2.
+```{r}
+#sqlite> .separator ','
+#sqlite> .import directors.csv director_info
+#sqlite> SELECT * FROM director_info LIMIT 5
+#   ...> ;
+#Director_ID,Director
+#144,Frank Darabont
+#139,Francis Ford Coppola
+#86,Christopher Nolan
+#459,Sidney Lumet
+#sqlite> .save imdb.db
+#sqlite> .tables
+#director_info  movie_info
+```
+
+By using above steps, we now have director_info table with directors.csv imported.
+
+# Question 2
+
+## 1.
+```{r, warning=FALSE, message=FALSE}
+# we connect to the db first:
+# if you want to test this code in your local machine
+# pls make sure you modify the path below!!:
+db<-dbConnect(SQLite(), dbname="D:/sqlite-tools-win32-x86-3390400/imdb.db")
+# see if we have the correct files
+dbListTables(db)
+# create query
+sqlcmd1<-"SELECT * FROM movie_info"
+sqlcmd2<-"SELECT * FROM director_info"
+# pass query to the sql cmd
+rs<-dbGetQuery(db,sqlcmd1)
+rs2<-dbGetQuery(db,sqlcmd2)
+# count rows:
+nrow(rs)
+# remove one extra row here since the import of csv will includer headers
+rs2<- rs2[-1,]
+nrow(rs2)
+```
+
+## 2.
+```{r, warning=FALSE}
+# we send query first:
+sqlcmdq2<-"SELECT * FROM movie_info WHERE Release_Year BETWEEN 2010 AND 2020"
+movie_2010_to_2020<-dbGetQuery(db,sqlcmdq2)
+
+# count movies in this period:
+sqlcmd5<-"SELECT COUNT(*) FROM movie_info WHERE Release_Year BETWEEN 2010 AND 2020 GROUP BY Release_Year"
+count_movie<-dbGetQuery(db,sqlcmd5)
+
+# create year column
+count_movie$Year<-c(2010:2020)
+
+# visualize the result
+ggplot(count_movie, aes(x = Year, y = count_movie[,1], label=Year,fill =Year, color =Year)) +
+    geom_line() +
+    annotate(geom="text", x=2014, y=32, 
+             label="Most movies released") +
+    scale_x_continuous(breaks=seq(2010,2020,by=1))+
+    ylab("numbers of movies realsed")+
+    labs(title = "Movies released from 2010-2020",
+        caption = "data from canvas csv file")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+From above result, we can see that most movies released in 2014. 
+
+## 3.
+```{r, warning=FALSE}
+sqlcmd3<-"SELECT MAX(IMDB_Rating), MIN(IMDB_Rating),AVG(IMDB_Rating)  FROM movie_info WHERE Genre LIKE '%Action%'"
+q3<-dbSendQuery(db,sqlcmd3)
+rs_action<-dbFetch(q3)
+# here is the max rating:
+rs_action[1,1]
+# mean rating
+rs_action[1,3]
+# min rating
+rs_action[1,2]
+```
+
+The max rating is 9, mean rating is 7.948677 and min rating is 7.6. 
+
+## 4.
+```{r,warning=FALSE}
+sqlcmd4<-"SELECT Series_Title, Genre, Gross FROM movie_info WHERE GROSS !='NA' ORDER BY Gross DESC LIMIT 25"
+top_25_movies<-dbGetQuery(db,sqlcmd4)
+top_25_movies
+```
+
+Movies listed in the table are 25 movies with highest grossing value.
+
+## 5.
+```{R}
+# Send query and get the result:
+sqlcmdQ5 <- "SELECT director_info.Director_Name, SUM(Gross) AS 'Total' FROM movie_info LEFT JOIN director_info ON director_info.Director_ID = movie_info.Director_ID GROUP BY movie_info.Director_ID ORDER BY Total DESC LIMIT 25"
+Best_directors<- dbGetQuery(db, sqlcmdQ5)
+
+# tableview of our query result:
+Best_directors
+
+# visualization:
+visual_result2 <- ggplot(Best_directors, aes(x=Director_Name,y=Total,label=Total,fill=Director_Name)) +
+  geom_bar(stat='identity') +
+    ylab("Grossing total")+
+    labs(title = "Top 25 directors with highest Grossing total",
+        caption = "data from canvas csv file")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+# check visual result: 
+
+visual_result2
+```
+
+From the result we can tell that Steven Spielberg has the total highest-grossing movies(His total Gross is 2478133165).
+
+## 6.
+```{r, warning=FALSE}
+verifyDirector <- function(x){
+  sqlcmd6 <- "SELECT * FROM director_info WHERE Director_Name = :x"
+  send_request <- dbSendQuery(db, sqlcmd6)
+  result<- dbFetch(dbBind(send_request, list(x=x)))
+  if(nrow(result)==0){
+    sprintf("This director ( %s ) doesn't exist in our database", x)
+  } 
+  else{
+    sprintf("This director ( %s ) exists in our database", x)
+  }
+}
+
+# check our result:
+verifyDirector("Christopher Nolan")
+verifyDirector("Naruto")
+```

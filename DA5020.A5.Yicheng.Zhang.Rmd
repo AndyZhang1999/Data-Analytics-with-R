@@ -1,0 +1,165 @@
+---
+title: "DA5020.A5.YICHENG.ZHANG"
+author: "YICHENG ZHANG"
+date: "2022-10-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE,warning=FALSE}
+library(XML)
+library(xml2)
+library(RCurl)
+library(dplyr)
+library(stringr)
+library(tidyverse)
+library(ggplot2)
+library(tidyr)
+library(lubridate)
+library(scales)
+library(readr)
+library(rio)
+library(viridis)
+```
+
+# Question 1
+```{r, message=FALSE}
+fileurl <- "https://www.senate.gov/general/contact_information/senators_cfm.xml"
+download.file(fileurl, destfile = "senators_cfm.xml")
+Senators <- xmlToDataFrame("senators_cfm.xml")
+dim(Senators)
+```
+
+Here we can see the dimension of this data is 101 obs with 13 variables
+
+# Question 2
+```{r}
+# We use regex to select only the first and last name of each senator:
+
+Senators$last_name <- str_extract(Senators$last_name,'[A-Z][a-z]+' ) 
+Senators$first_name <-str_extract(Senators$first_name,'[A-Z][a-z]+' )
+Senators$full_name <- paste(Senators$first_name, Senators$last_name ) 
+
+Senators$nameAndParty<- paste(Senators$first_name, Senators$last_name, Senators$party )
+
+# now we check the result of our regex:
+
+Senators$nameAndParty
+```
+
+
+```{r}
+# And we make sure the result we made and be found in the dataframe:
+
+str(Senators)
+```
+
+We can see that there is a new column called ```full_name``` on the data frame now.
+
+# QUESTION 3
+```{r}
+senatorsByState <- function(x){
+  SS <- Senators %>%
+    filter(state == x) %>%
+    select(state, first_name, last_name, party) %>%
+    group_by(state)
+  p <- paste("The senators for",(x), "are: ")
+  q <- paste(SS$first_name, SS$last_name, ",", recode(SS$party,"D" = "Democratic Party", "R" = "Republician Party", "I" = "Independent Party"))
+  r<- str_c(q, collapse = " and ")
+  s<- str_c(p , r)
+  return(s)
+}
+
+# check the result:
+senatorsByState("MA")
+```
+
+# Question 4
+```{r}
+# Ratio Of Female To Male Youth Unemployment Rate .csv
+
+table1<-import('Ratio Of Female To Male Youth Unemployment Rate .csv')
+
+# we first set headers right:
+
+names(table1)<- table1[1,]
+table1 <- table1[-1,]
+
+# we first make two data frame:
+
+country_name<-table1%>%select(`Country Name`,`Country Code`)
+
+country_name<-as_tibble(country_name)
+
+# make the code here are unique:
+
+country_name <- country_name %>%
+  filter(duplicated(`Country Code`) == FALSE)
+
+# now we can check if we had the correct tibble:
+
+str(country_name)
+```
+
+```{r}
+# and the  indicator_data:
+
+indicator_data<-table1%>%select(-`Country Name`,-`Indicator Name`, -`Indicator Code`)
+indicator_data<-as_tibble(indicator_data)
+indicator_data<-indicator_data %>% pivot_longer( `1960`:`2020`,names_to="Year", values_to = "value")
+
+# remove NA column:
+
+indicator_data<-indicator_data%>%select(-`NA`)
+
+# now we can check if we had the correct tibble:
+
+str(indicator_data)
+```
+
+# Question 5
+
+```{r}
+# Since there are only three countries been defined as NA countries in the table Country Meta-Data .csv
+# So we didn't use it and we use our own table instead
+# we first select out all the datas we need for this question:
+
+indicator_data<-indicator_data%>%mutate(Year=as.numeric(Year))
+country1<-indicator_data%>%filter(`Country Code`== 'MEX' & Year >=2000)# we treat mexico as NA here
+country2<-indicator_data%>%filter(`Country Code`== 'USA' & Year >=2000)
+country3<-indicator_data%>%filter(`Country Code`== 'CAN' & Year >=2000)
+country4<-indicator_data%>%filter(`Country Code`== 'NIC' & Year >=2000)# we treat Nicaragua as NA here
+country5<-indicator_data%>%filter(`Country Code`== 'CUB' & Year >=2000)# we treat cuba as NA here
+country6<-indicator_data%>%filter(`Country Code`== 'IRN' & Year >=2000)
+country7<-indicator_data%>%filter(`Country Code`== 'AFG' & Year >=2000)
+country8<-indicator_data%>%filter(`Country Code`== 'EGY' & Year >=2000)
+country9<-indicator_data%>%filter(`Country Code`== 'LBN' & Year >=2000)
+country10<-indicator_data%>%filter(`Country Code`== 'SAU' & Year >=2000)
+country11<-indicator_data%>%filter(`Country Code`== 'KOR' & Year >=2000)
+country12<-indicator_data%>%filter(`Country Code`== 'CHN' & Year >=2000)
+country13<-indicator_data%>%filter(`Country Code`== 'JPN' & Year >=2000)
+country14<-indicator_data%>%filter(`Country Code`== 'MNG' & Year >=2000)
+country15<-indicator_data%>%filter(`Country Code`== 'ARM' & Year >=2000)
+
+# and now we want to create a column called continent:
+
+all_country<-rbind(country1,country2, country3,country4,country5, country6,country7, country8, country9, country10, country11,country12, country13, country14, country15)
+all_country1<-cbind(all_country, continent=NA)
+all_country1[1:105,]$continent<-"North America"
+all_country1[106:210,]$continent<-"Middle East"
+all_country1[211:315,]$continent<-"Asia"
+
+# then we can do the chart:
+
+ggplot(all_country1, aes(x = Year, y = value, label=`Country Code`,fill = `Country Code`, color = `Country Code` )) +
+  geom_line() +
+  #scale_color_viridis(discrete = TRUE) +
+  ggtitle("Female to Male Unployeement Rate of Three Continents in the Previous 20 Years") +
+  ylab("Female to Male Unployeement Rate")+
+  facet_wrap(. ~ continent)
+```
+
+From this result, we can have a general idea bout the Female to Male Unployeement Rate of Three Continents in the Previous 20 Years. It seems the country from middle east have the biggest issue with Female to Male Unployeement Rate  since most of them have high trend. The Egypt has the highest rate and lebanon has the lowest, Afghanistan doesn't has lots of change on the rate in the past twenty years. In the Asia, the China, Korea, and Japan all have relatively smooth treand on the rate but the Armenia has a realatively huge change on the rate around 2008. In the north america, the USA and Canada have a very smooth trend which means their unployeement rate is low and stable, but the other countries all have several dramatic changes on the rate. In short, the middle east has the worst female to male unemployeement problem, and gender inequality should definitely be addressed in these areas. 

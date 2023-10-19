@@ -1,0 +1,177 @@
+---
+title: "INSH5301 HW9 Solution"
+author: "YICHENG ZHANG"
+date: "2022-11-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE,warning=FALSE}
+library(psych)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(reshape2)
+library(GPArotation)
+```
+
+# 1.
+
+```{r}
+# load data and its stracture:
+data(bfi)
+str(bfi)
+
+# looking for NA values:
+sapply(bfi, function(x) sum(is.na(x)))
+```
+
+```{r}
+#bfi[,sapply(bfi, is.numeric)] <- lapply(bfi[,sapply(bfi, is.numeric)],
+#function(x){
+#x <- ifelse(is.na(x), median(x, na.rm = TRUE), x)
+#}
+#)
+#summary(bfi)
+bfi<-na.omit(bfi)
+```
+
+```{r}
+#plot(eigen(cov(bfi))$values, type="b")
+bfi2 <- as.data.frame(scale(bfi))
+pca1<- prcomp(bfi2)
+plot(pca1$sdev^2)
+```
+The result of this scree plot indicates that the elbow position should be around 5-7 index, we want to double check the result, so we also performed the cumulative variance plot:
+
+```{r}
+# variance plot
+plot(cumsum(pca1$sdev^2)/sum(pca1$sdev^2), ylim = c(0, 1))
+```
+
+Again, we have a similar result here and it tells that first 5-7 factors can explain around 55% percent of the total variation. 
+
+# 2.
+
+```{r}
+# by referring to the text book we use fa to help us narrow down the target factors:
+fact <- fa(bfi2, nfactors=2)
+
+# first factor:
+fact1 <- fact$loadings[,1]
+fact1[order(fact1)]
+```
+From this result it represents that the two side of our first factors are representing two clearly different characters of individuals, by referring to the bfi data dictionary we know that E2 means "Find it difficult to approach others" and E1 means "Don't talk a lot",C5 represents "waste my time" and C4 means "Do things in a half-way manner.". However, on the other side of the ordered factors we have E3 "Know how to captivate people.", A3 "know how to comfort others" and A5 "make people feel at ease", E5 "take charge". Therefore, we can tell that for those factors with negative loadings, they represent people who are withdrawn, introverted and lack responsibility; and for those positive loadings' factors, they represent individuals who are positive, and good at cooperating with strong leadership to help and guide others.
+
+```{r}
+# second factor:
+fact2 <- fact$loadings[,2]
+fact2[order(fact2)]
+```
+From this result it represents that the two side of our second factors are still representing two clearly different characters of individuals, by referring to the bfi data dictionary we know that C3 means "Do things according to a plan" and A5 means "make people feel at ease", E4 represents "make friends easily" . However, on the other side of the ordered factors we have N3 "Have frequent mood swings", N2 "Get irritated easily" and N1 "get angry easily". Therefore, we can tell that for those factors with negative loadings, they represent people who are good at cooperate with others, extroverted and organized; and for those positive loadings' factors, they represent individuals who are aggressive, surly and lack of stable mindset.
+
+# 3.
+
+```{r}
+# by referring to the text book we have this:
+# and running it 25 times 
+# we calculate the mean
+kout <- kmeans(bfi2,centers=2,nstart=25)
+centroids <- kout$centers
+topvars_centroid1 <- centroids[1,order(centroids[1,])]
+topvars_centroid2 <- centroids[2,order(centroids[2,])]
+# display the top scoring variables:
+tail(topvars_centroid1)
+```
+
+```{r}
+# display the top scoring variables:
+tail(topvars_centroid2)
+```
+
+Similar to previous questions, we have two clearly different groups of factors (clusters), and some of the factors we have already seen them in the previous question. The first group of factors represents a positive, responsible and progressive individual; and the second group of factors represents people who are negative,  aggressive and lack of steady mood. Clusters (or groups) and factors here appear a pattern of overlapping, and yet a fundamental distinction is that factors are essentially dimensional and oppositional. We may want to pay attention to the different two directions exit among factors which are very similar to the example provided in the text book so that we commonly witness distinct oppositions along either end.  Meanwhile, we want to focus on the variables with high scores that are close to the cluster centroid by suing the ```centroids``` function here and from the output we can tell the divergent of those two clusters may not very big as what we expected mathematically. 
+
+# 4.
+```{r}
+# given we used the centroid method for the question 4
+# and we want to compare the result of Q4 to Q3
+# therefore we try use the centroid method in hierarchical clustering first:
+hout <- hclust(dist(bfi2),method="centroid")
+plot(hout,labels=FALSE)
+# divide into 2 clusters
+abline(a=1.2,b=0,col="red")
+```
+```{r}
+mean_val1 <- aggregate(bfi2, by=list(as.vector(cutree(hout,2))), mean)
+sorted_cluster1 <- sort(mean_val1[1, -1])
+#and we only want the last 6 variables for the comparison:
+# display the top scoring variables:
+cluster<-sorted_cluster1[1,23:28]
+# hierarchical clustering result:
+cluster
+
+```
+
+```{r}
+sorted_cluster1.2 <- sort(mean_val1[2, -1])
+#and we only want the last 6 variables for the comparison:
+# display the top scoring variables:
+cluster.1<-sorted_cluster1.2[1,23:28]
+# hierarchical clustering result:
+cluster.1
+```
+By using the centroid method we have a clear 2 clusters but the variables with high scores are not similar to the result we got in the question 3. Therefore we want to try different approaches. We used complete method as the text book.
+```{r}
+# by referring to the text book
+# we have this:
+hout2 <- hclust(dist(bfi2),method="complete")
+plot(hout2,labels=FALSE)
+# divide into 2 clusters
+abline(a=17,b=0,col="red")
+# divide into 6 clusters:
+abline(a=13.5,b=0,col="yellow")
+```
+
+```{R, warning=FALSE}
+# we follow the instruction of the prompt here:
+# we just apply cutree to the hclust output and then
+# aggregate the data by cluster and then examine those centers (mean value)
+mean_val <- aggregate(bfi2, by=list(as.vector(cutree(hout2,2))), mean)
+sorted_cluster <- sort(mean_val[1, -1])
+#and we only want the last 6 variables for the comparison:
+# display the top scoring variables:
+cluster1<-sorted_cluster[1,23:28]
+# hierarchical clustering result:
+cluster1
+```
+```{r}
+# k-means result:
+tail(topvars_centroid2)
+```
+
+```{r, warning=FALSE}
+# the other cluster:
+# hierarchical clustering result:
+sorted_cluster2 <- sort(mean_val[2, -1])
+#and we only want the last 6 variables for the comparison:
+cluster2<-sorted_cluster2[1,23:28]
+# second hierarchical clustering result
+# display the top scoring variables:
+cluster2
+```
+
+
+```{r}
+# k-means result
+# the N1 and A1 can't match here:
+tail(topvars_centroid1)
+```
+
+It seems that the hierarchical clustering with complete method will give us more reasonable result and similar to what we expected as the k-means output. From this output we can tell that we may not having a exact same matching for the cluster factors and mean value as the result we got in the previous questions, but we still have a very similar high scoring variables output by using different approaches.
+
+# 5.
+
+Conclusion: By using clusters and k-means method, we now know that we have two clearly different groups of factors (clusters);One group of factors represents individuals who are positive, responsible and progressive; and the other group of factors represents people who are negative,  aggressive and lack of steady mood. Clusters (or groups) and factors here appear a pattern of overlapping, and yet a fundamental distinction is that factors are essentially dimensional and oppositional. Just like what we have in this dataset that the entire data can be stratified into two clusters which each of them can represent an opposite feature due to different centroid, and in short it is negative vs positive characteristics. The reason why we can simply conclude such a big dataset into "negative" and "positive" cluster is because that individual with certain strong "negative" and "positive" feature will be aggregated together toward its respective centroid and different factors will carry out different direction (ie. opposite). As mentioned in the last question, each cluster, though  it is less oppositional, shows one direction and we highlight variables with high scores because they are more approaching to the centroid and can offer us an overall idea of different directions which can tell us there are "positive" and "negative" people as two clusters exist in our data in general.

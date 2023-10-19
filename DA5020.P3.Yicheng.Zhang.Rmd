@@ -1,0 +1,523 @@
+---
+title: "Practicum 3"
+author: "Chenyao Xiao, Yicheng Zhang, and Isabella Motha"
+date: "2022-12-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(class)
+library(corrplot)
+library(dplyr)
+library(ggplot2)
+library(leaps)
+library(psych)
+library(readr)
+library(tibble)
+library(tidyr)
+```
+
+## 1
+
+### Load
+
+Here we use *read.csv*function to get the data frame. Since we can't process the 
+original data due to its huge size, we used the provided smaller dataset on the Canvas instead.
+```{r}
+df <- read.csv("P3smaller.csv")
+```
+
+### Data exploration
+
+This data frame contains 20 variables and 3986 rows. Some data are inconsistent 
+with their variables. Take the dates as an example. The data frame we obtained are 
+strings, thus we need to change them into datetime.
+```{r}
+dim(df)
+glimpse(df)
+# format the date and times
+df$lpep_dropoff_datetime <- parse_datetime(df$lpep_dropoff_datetime, 
+                                                    format = "%Y-%m-%d %H:%M:%S")
+df$lpep_pickup_datetime <- parse_datetime(df$lpep_pickup_datetime,
+                                                   format = "%Y-%m-%d %H:%M:%S")
+glimpse(df)
+```
+
+As we can find from the data dictionary, we can choose *RateCodeID*, *VendorID*, 
+*Store_and_fwd_flag*, *payment_type* and *trip_type* as factors. If we check the class again, 
+we can see that the updated columns are factors.
+```{r}
+# Use dummy coding
+df$store_and_fwd_flag[df$store_and_fwd_flag=="N"]<-0
+df$store_and_fwd_flag[df$store_and_fwd_flag=="Y"]<-1
+df$store_and_fwd_flag <- as.numeric(df$store_and_fwd_flag)
+# Change into factors
+df<-df %>%
+  mutate(across(c(store_and_fwd_flag,trip_type,RatecodeID,VendorID,payment_type),as.factor))
+# Check class
+class(df$RatecodeID)
+summary(df)
+```
+
+Then we can inspect the data to identify the frequency of missing values.
+NAs appear in 7 columns. The whole 
+*ehail_fee* column is missing, so we can just remove it from the data frame.
+```{r}
+sapply(df,function(x) sum(is.na(x)))
+# Remove ehail_fee column
+df <- df %>% select(-ehail_fee)
+```
+For other 6 columns with NA, we can first look at the distribution of complete data
+then decide how to fill those values.
+
+```{r}
+df1 <- df%>%select(PULocationID,DOLocationID, passenger_count,trip_distance,fare_amount,
+                extra, mta_tax,tip_amount, tolls_amount, improvement_surcharge, total_amount,
+                total_amount, congestion_surcharge)
+cor_matrix <-cor(df1, use='complete.obs')
+corrplot(cor_matrix, method="circle")
+# visualization of distribution and correlation:
+pairs.panels(df1)
+```
+From the visualization of the each numeric variable result we can tell that most 
+of the results has a skewed distribution and basically none of them are normally 
+distributed. Given the fact we are using the real data from the world it makes sense 
+that we need to face this mess data. 
+
+The degree of standard deviations around the mean decrease for each value is represented 
+by the Z-score.The Z score equals to zero refers to the mean value, and in order 
+to calculate it, we need to take the original data, calculate the mean and the use 
+it to minus origin value, then divide by the SD to get the Z-score of each variable.
+
+The formula of the z score is:
+
+$$Z=\frac{x-\bar{x}}{sd_{x}}$$
+
+A huge distance between an variable’s Z-score and zero can indicate they are actually 
+extravagant. Z ± 3 is a widely accepted cut-off point for identifying outliers, 
+and we will apply the same logistic in ourvisualization here. Number of outliers in 
+each column is shown in the figure below:
+
+```{r}
+outliers <- function(x){
+  # and we need mean and sd value to calculate the z score
+  non_na_data<-x[!is.na(x)]
+  mean_val<-mean(x, na.rm = TRUE)
+  sd_val<-sd(x , na.rm = TRUE)
+  # we use z score with an absolute value larger than 3 as outliers
+  sum(abs((non_na_data - mean_val) / sd_val) > 3)
+}
+
+enframe(sapply(df1[, 1:11], outliers)) %>% 
+  ggplot() +
+  geom_bar( mapping = aes(x=name, y = value ), stat='identity') +
+  labs( y = "numbers of outliers", x = "variable name", 
+        title = "Total outliers in each numeric variables",
+        caption = "Dealing with outliers")+
+  theme_bw()
+```
+From this result we can tell that most of the outliers exist in the passenger_count and 
+we have no outliers in the PULocationID and DOLocationID. We want to remove some of 
+those outliers later in other questions.
+
+### Feature selection
+
+From the previous question we know that we have a ```tip_amount``` as target variable
+which we want to predict. The general logic for a good model is it should have 
+a lowest BIC value and the R^2 value should be as big as possible. Therefore, we will 
+follow this idea to do our feature selection which aim to select the best fit model 
+for us. The regsubsets function will help us to automatically a BIC and R^2 value 
+each time and provide us a table view of the output to choose the best fit model.
+
+Besides, as total amount is a combination of all fees, we remove it from the regression
+avoiding mistake in model directions.
+```{r}
+# multiple regression using backward stepwise
+model <- regsubsets(tip_amount~ ., data = df1, method="backward")
+sumresult <- summary(model)
+model.subsets <- cbind(sumresult$which, sumresult$bic, sumresult$rsq, sumresult$adjr2)
+model.subsets <- as.data.frame(model.subsets)
+colnames(model.subsets)[13:15] <- c("BIC","Rˆ2","adj Rˆ2")
+# check result:
+model.subsets
+```
+From this result we can tell that both of the model 8 have a very small BIC value and
+biggest R^2 value in the same time. 
+
+For those features we not included here its mainly because that they may not so 
+helpful toward our prediction function and they can't improve our model from both 
+BIC and R^2 perspective.Thus, our final model will be (tip_amount~trip_distance+fare_amount+extra+mta_tax+tolls_amount+total_amount+
+improvement_surcharge+congestion_surcharge)
+
+### Feature engineering
+
+Think about this, If you take a really long trip with a driver then you probably 
+will tip more him to show your appreciation. Therefore, We think the total length 
+of time that passengers spend on the taxi could be related to the tip_amount so 
+We created a feature called total_riding_time which We used the drop-off time to 
+minus the pickup time to get the total riding time passengers spend on the taxi.
+
+```{r}
+# create the total_riding_time
+df$total_riding_time<-round(
+  as.numeric(difftime(df$lpep_dropoff_datetime,df$lpep_pickup_datetime,units = "mins")),1)
+str(df)
+```
+Now we can see that we have a new column called the total_riding_time and we want 
+to check if this new feature can promote our prediction to the tip_amount. We first 
+do the correlation check:
+```{r}
+cor(df$tip_amount,df$total_riding_time)
+```
+
+Well, the correlation result tells us that this new feature may not so related to 
+the target variable. But We doubt this result because that the size of a correlation 
+can be influenced by the size of your sample and the correlation does not imply 
+causality. We can't tell if there is no Statistical significance between these two 
+variables with above result. So, we want to perform the regression analysis to 
+double-check what we just created:
+```{r}
+summary(lm(df$tip_amount~df$total_riding_time))
+```
+Well, this time the result tells us the total_riding_time has no significant 
+difference among the tip_amount with a p value bigger than 0.05. So this tell us 
+that, at least form only total_riding_time's perspective, the new feature is not 
+a good predictor for the target feature. Let's do the visualization of this result 
+as required in the rubric
+```{r}
+# visualization of the lm result
+ggplot(df, aes(tip_amount, total_riding_time)) + 
+   geom_point() + 
+  geom_smooth(method = "lm", colour = "green", fill = "green") +
+  theme_light()
+```
+From this visualization, we can see that the result is pretty much similar as the 
+regression model provided, the line of the best fit can poorly explain the two variables
+and the confidence interval (shallow green area) is also un evenly distributed which means 
+we can fit these two variables well in a balanced CI range. Also, both of them have 
+many points that are not covered by the line of the best fit, so we can't really 
+tell if there is a linear relationship exist in these two variables.
+
+We want to perform another stepwise selection to see if we want to include this 
+feature in a general view so we include new feature in model to explain why 
+it is not a good indicator:
+```{r}
+df1$total_riding_time <- df$total_riding_time
+model <- regsubsets(tip_amount~ ., data = df1, method="backward")
+sumresult <- summary(model)
+model.subsets <- cbind(sumresult$which, sumresult$bic, sumresult$rsq, sumresult$adjr2)
+model.subsets <- as.data.frame(model.subsets)
+colnames(model.subsets)[14:16] <- c("BIC","Rˆ2","adj Rˆ2")
+# check result:
+model.subsets
+```
+
+Unfortunately, the result tells us that, from a general view, this feature can't 
+really fit into our model, and we may discard it in the further analysis.Both BIC 
+and R^2 value will not change even if we include this variable into the entire dataset
+and run several different models. we won't say this result surprise us as we known that 
+what we assumed may not really be true, and given the fact that most of the taxi 
+serves nowadays have a fixed tip_amount. 
+Meanwhile, the taxi price in the New York is already high enough and it will make 
+passengers no longer want to tip a lot to the driver which also makes this result make sense.
+
+## 2
+
+### CRISP-DM: Data Preparation
+
+### Preprocess the data
+
+We can look at what we have in dataset now,
+```{r}
+summary(df)
+```
+We then filter the data by choosing variables related to tip amount.
+```{r}
+df_filt <- df %>%
+  select(-VendorID,-lpep_pickup_datetime,-lpep_dropoff_datetime,-PULocationID,-DOLocationID,
+         -RatecodeID,-store_and_fwd_flag)
+colSums(is.na(df_filt))
+```
+We still have some missing values in the passenger_count, trip_type, payment_type, 
+and congestion_surcharge. Given the missing value percentage is only about 20% 
+which is less than 30%, We can do some imputations to these variables in this case.
+```{r}
+# handling missing data and transform them:
+# impute payment_type according to data dictionary
+# 5 = unknown
+df_filt$payment_type<-as.numeric(df_filt$payment_type)
+df_filt$payment_type [is.na(df_filt$payment_type )] <- 5
+
+# Most of trips are Street-hail
+# impute with 1
+df_filt$trip_type<-as.numeric(df_filt$trip_type)
+df_filt$trip_type [is.na(df_filt$trip_type)] <- 1
+
+
+# impute numeric data type:
+df_filt$congestion_surcharge [is.na(df_filt$congestion_surcharge)] <- 
+  mean(df_filt$congestion_surcharge , na.rm = T) 
+# impute passenger count as integer
+df_filt$passenger_count [is.na(df_filt$passenger_count)] <- 
+  round(mean(df_filt$passenger_count, na.rm = T),0) 
+summary(df_filt)
+```
+NAs are imputed, and we now want to deal with outliers. Given the model we will use is
+(tip_amount ~ trip_distance +fare_amount +extra +mta_tax +tolls_amount +total_amount+
+improvement_surcharge + congestion_surcharge), we then need to deal with outliers.
+Outliers increase the variability in the data, which decreases statistical power. 
+Consequently, excluding outliers can cause our results to become statistically significant. 
+For admission numbers here, we need to remove outliers. When we expect our data 
+has a normal distribution, Z-scores may help us to identify how odd the real observation is.
+
+The degree of standard deviations around the mean decrease for each value is represented 
+by the Z-score. The Z score equals to zero refers to the mean value, and in order to 
+calculate it, we need to take the original admissions, calculate the mean and the 
+use it to minus origin admission value, then divide by the SD to get the Z-score of 
+the admission. A huge the distance between variable’s Z-score and zero can indicate 
+they are actually extravagant. Z± 3 is a widely accepted cut-off point for identifying 
+outliers, and we will apply the same logistics in our computation.
+
+What we want to know is the factors that affect tip_amount. Hence, outliers that some people
+are very generous for tip or some people never tip need to be removed.
+Let's first remove the outliers in the tip_amount:
+
+```{r}
+# Remove outliers using z score
+# When z > 3, it means the data is more than
+# 3 times standard deviation from the mean, which is considered an outlier
+A <- df_filt$tip_amount
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+We can see that we have only 3939 obs left by removing the outliers of tip_amount.
+```{r}
+# same step for surcharge
+A <- df_filt$improvement_surcharge
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+Same steps are perform in other variables.
+```{r}
+A <- df_filt$fare_amount
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+```{r}
+A <- df_filt$extra
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+```{r}
+A <- df_filt$tolls_amount
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+```{r}
+A <- df_filt$total_amount
+mean <- mean(A)
+Std.Dev <- sd(A)
+df_filt$z <-(mean - A)/Std.Dev
+df_filt$z <-abs(df_filt$z)
+df_filt <- df_filt %>%
+filter(z<=3)
+# remove the last column
+df_filt <- df_filt[,-14]
+```
+we can see that we have only 3583 obs left by removing the outliers of total_amount. 
+We are done with removing the outliers of all numeric variables in the model. 
+Now let's take out the variables we need for our model.
+```{r}
+# filter the data
+model_df<-df_filt%>%select(fare_amount,extra,tip_amount,mta_tax,tolls_amount,
+                           total_amount,congestion_surcharge)
+```
+
+### Normalize the data:
+
+Here we will choose the Max-Min normalization method here. Min-max normalization 
+is a normalizing approach that translates x linearly to y= (x-min)/(max-min), 
+where min and max values in X, and X is the collection of measured x values, and 
+it's easy to understand that when x=min, y=0, and when x=max, y=1. This indicates 
+that the lowest and highest values in X are translated to 0 and 1, respectively.
+As a result, the complete range of X values from min to max is assigned to the range 0 to 1.
+
+```{r}
+# we write a function here for the transformation:
+normal_func <- function(x){
+  (x-min(x))/(max(x)-min(x))
+}
+
+# apply the normalization to the model_df
+norm_model_df <-as.data.frame(lapply(model_df, normal_func))  
+```
+
+### Encode the data:
+
+There are one categorical variables that need to be encoded, payment_type. We can add
+it back after normalization.
+```{r}
+norm_model_df$payment_type <- as.numeric(df_filt$payment_type)
+norm_model_df$payment_type <-normal_func(norm_model_df$payment_type)
+
+# change back to factors
+norm_model_df$payment_type <- as.factor(norm_model_df$payment_type)
+```
+
+### Prepare the data for modeling
+
+We would like to split 70% to training set, and 30% for testing set. There are in 
+total 3583 rows in dataset, it’s too many for compiling 2+ different k in a reasonable time. 
+Practical research shows that using 20-30% of the dataset for testing and the rest 
+70-80% for training provides the greatest outcomes.For all possibly training data 
+percentage, we should choose a case for which the product of p(1-p) is the greatest 
+of all conceivable values p. For p >=0.8, the function p(1-p) decreases. Thus, 
+its maximum value is obtained when the value p is the least attainable - that is, 
+when p = 0.8.So,p approaching to 70%~80% is statistically the optimum divide between
+training and testing sets.
+(reference from: https://www.cs.utep.edu/vladik/2018/tr18-09.pdf)
+```{r}
+set.seed(2)
+# take out 70% first
+df_trailer<- sort(sample(nrow(norm_model_df), nrow(norm_model_df)*.7))
+
+# trains df has 70% of total dataset and test df has 30%
+train_df<-norm_model_df[df_trailer,]
+test_df<-norm_model_df[-df_trailer,]
+```
+```{r}
+# view the structure of the train_df
+glimpse(train_df)
+
+# view the structure of the test_df
+glimpse(test_df)
+```
+Now we can see that our dataset was been splitted into 70% of training data and 30% of test data.
+
+## 3
+
+### CRISP-DM: Modeling
+
+```{r}
+# we first create a function to get the mse
+mse_func <- function(x){
+  # we want to calculate the mse here
+  mean(sum((x - mean(x))^2))
+}
+
+# knn.predict function
+knn.predict <- function(data_train, data_test, k){
+  # we apply the k-nearest classification here:
+  # get the number of neighbors here:
+  predicted_result <- knn(data_train, data_test, data_train$tip_amount, k)
+  mse <- mse_func( as.numeric(levels(predicted_result))[predicted_result]- data_test$tip_amount)
+  return (mse)
+}
+```
+
+## 4
+
+Here, since we are required to perform different value of k and we may want to use
+visualization of the MSE value to show which K value is most suitable in our case. 
+We will loop through our function 30 times 
+
+```{r}
+# we create a empty tibble to store return value from function:
+# and it should contain K and MSE that we input&retruned from the function
+set.seed(2)
+MSE_RESULT <- tibble('k_value'=numeric(), 'MSE'=numeric())
+# use a loop to run the function we created in previous question 30 times:
+for(i in 20:50){
+  mse_val <- knn.predict(train_df, test_df,i)
+  MSE_RESULT <- add_row(MSE_RESULT, 'k_value'=i, 'MSE'=mse_val)
+}
+```
+Since we store the MSE value in the table we created so we can now present a MSE 
+chart to evaluate which K is the best for our model.
+```{R}
+# IN this tbale we have different k value we looped each time and its respective MSE value
+MSE_RESULT
+```
+```{r}
+# Plot the MSE result here:
+
+ggplot(data = MSE_RESULT) + 
+  geom_line( mapping = aes(x = k_value, y = MSE)) +
+  scale_x_continuous(breaks=seq(20, 50, 1))+
+  labs(title = "MSE result line chart",caption="Find best K")+
+  theme_bw()
+```
+From this result, we can tell that when we have k=23 as the lowest MSE value. Therefore 
+I would say that this result can provide us a conclusion that the our model can have 
+a really similar result between predicted tip_amount and actual tip_amount since 
+the MSE is only 3 which is pretty low so that we have enough confidence to 
+claim the accuracy of our model is high.
+
+However, we won't recommend to use KNN method for tip amount prediction given the 
+fact that tip amount is more like a continuous numeric data which a linear regression model 
+in this case would be more suitable for prediction of such data type. In the meantime, 
+the tip amount is not 'certain event' which means that people sometimes may not offer 
+tips to the driver and in this case, it will cause the data sample for this kind of 
+not "certain event" quite limited which KNN can fail to predict; Third, when the 
+majority of the data on which the model is being trained indicates one label, that 
+label has a high possibility of being predicted. Just like our case, we selected 70% 
+of data to be trained which certainly will improve our accuracy but we can't assure 
+the reality would be the same. The last thing is that the K value could be vary 
+from different time, and if we can't choose the best K value then the model will 
+be under or over fitted. I would say maybe linear regression model would be a better 
+choice for tip_amount prediction. 
+
+## 5
+
+We choose steady k=23 and then we evaluate the effect of the percentage split for the 
+training and test sets.
+
+```{r}
+set.seed(1)
+MSE_RESULT5 <-tibble('Percentage'=numeric(), 'MSE'=numeric())
+for (percentage in seq(from=0.5,to=0.9,by =0.02)){
+  df_trailer<- sort(sample(nrow(norm_model_df), nrow(norm_model_df)*percentage))
+train_df5<-norm_model_df[df_trailer,]
+test_df5<-norm_model_df[-df_trailer,]
+mse.percentage = knn.predict(train_df5, test_df5,23)
+  MSE_RESULT5 <- add_row(MSE_RESULT5, 'Percentage'=percentage, 'MSE'=mse.percentage)
+}
+# Plot the MSE result here:
+ggplot(data = MSE_RESULT5) + 
+  geom_line( mapping = aes(x = Percentage, y = MSE)) +
+  labs(title = "MSE result line chart", caption="Find best percentage to test")+
+  theme_bw()
+```
+From the chart we can see that the 0.84 has the best result. Thus if we want to 
+optimize the k-nn model we have, we can split the data by 0.84:0.16.

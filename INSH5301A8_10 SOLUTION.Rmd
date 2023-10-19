@@ -1,0 +1,300 @@
+---
+title: "INSH5301 A8 Solution"
+author: "YICHENG ZHANG"
+date: "2022-11-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+rm(list = ls())
+library(ggplot2)
+library(stargazer)
+library(dplyr)
+library(corrplot)
+library(leaps)
+```
+
+```{r}
+df<-read.csv("Admission_Predict_Ver1.1.csv", stringsAsFactors = F)
+```
+1.
+I would like to check that the chance of admitting for applicators with different test scores and research activities. My proposal for this research would be a higher GPA would lead to a higher chance to admitted by UCLA.
+
+2.
+The data sets was downloaded from Kaggle (https://www.kaggle.com/datasets/mohansacharya/graduate-admissions) built by MOHAN S ACHARYA used the original graduate admission data from UCLA on 2017. The data sets was originately scraped from UCLA data set for prediction purpose (Mohan S Acharya, Asfia Armaan, Aneeta S Antony : A Comparison of Regression Models for Prediction of Graduate Admissions, IEEE International Conference on Computational Intelligence in Data Science 2019). This data set included different types of test scores, GPA and research activities. As I had seen on an earlier reply by the author, he states that the data set was mainly created by retrieving international graduate student data from UCLA official data sets, some of variables was collected from UCLA international graduate students through questionnaire due to confidentiality. the data sets was also approved by the IEEE committee for research purpose.Therefore, I believe it was collected originally and we can use it for this assignment.
+
+3.
+My dependent variable is Chance.of.Admit. The reason why I want to do research on this data is because as a future applicator my self I'm also wondering how different personal background will affect international applicators' chance of admitting. My assumption for major factors that influence chance of admitting includes GRE/TOEFL score, research activities and Letter of Recommendation Strength and GPA. 
+
+4.
+My independent variables have: GRE/TOEFL Score, undergraduate school rating, Statement of Purpose and Letter of Recommendation Strength,research activity, GPA. 
+
+I choose these variables based on general graduate school requirement. And by reference to their requirements and combining with what I have from downloaded data, I used these 6 variables. Before I run the regression, I think most of them will have a p value less than 0.05 toward the dependent variable since they all highly associated with my dependent variable intuitively, if a applicator have a good performance on any of those independent variables it might promote the chance of admit. However, some independent variable might affect others, so we want to use correlation to testify it.
+```{r}
+df.cor<-df[,-7]
+cor(df.cor)
+corrplot(cor(df.cor), method = 'square', order = 'FPC', type = 'lower', diag = FALSE)
+```
+
+It seems most of my independent variables correlated with each other, and and these correlation actually make sense and will all affect their chance of admitting in the end. A high GRE score will lead to a high toefl score as well, since a student should master English well enough in order to have a high score on these tests. Good scores on those tests will lead to higher possibility to get admitted by the UCLA. Applicator from a university with high rating might also have a higher academic ambitions which lead them to write good SOP in order to admitted by the UCLA. A students with high gpa will also have a stronger LOR from his/her recommenders and they will have higher chance to admitted by UCLA.Student with a ideal GRE score can also prove that they have a higher likelihood to do well in writing SOP since their english is good enough to do so, and they are more likely to get admitted by the university.
+
+5.
+```{r}
+# change variables into factors:
+df$Research<-as.factor(df$Research)
+
+# remove unneeded column
+df<-df[,-1]
+
+# check data stracture:
+str(df)
+```
+
+For each variables, they are measuring:
+
+GRE.Score: GRE Scores ( out of 340 )
+TOEFL Score: TOEFL Scores ( out of 120 )
+University.Rating: applicator's undergraduate university uating ( out of 5 )
+SOP: Statement of Purpose Strength ( out of 5 )
+LOR: Letter of recommendation strength (out of 5)
+CGPA: Undergraduate GPA ( out of 10 )
+Research: Research Experience ( 0 and 1 ), 0 indicates no research experience; 1 means vice versa.
+Chance.of.Admit:Chance of Admitted by UCLA ( ranging from 0 to 1 )
+
+6.
+```{r}
+m1 <- lm(df$Chance.of.Admit ~ df$GRE.Score)
+summary(m1)
+
+m2 <- lm(df$Chance.of.Admit ~ df$TOEFL.Score)
+summary(m2)
+
+m3 <- lm(df$Chance.of.Admit ~ df$University.Rating)
+summary(m3)
+
+m4 <- lm(df$Chance.of.Admit ~ df$SOP)
+summary(m4)
+
+m5 <- lm(df$Chance.of.Admit ~ df$LOR)
+summary(m5)
+
+m6 <- lm(df$Chance.of.Admit ~ df$CGPA)
+summary(m6)
+
+m7 <- lm(df$Chance.of.Admit ~ df$Research)
+summary(m7)
+```
+From the result, it infers that most of my independent variables have strong impact toward my dependent variable. Given the fact that all of their R-squared values are good and they all correlated with each other( by referring to result from Q4), I think all all of these independent variables might change with the addition of multiple variables.
+
+# 7.
+
+```{r}
+# full model with recoded dummy vars
+full_model <- lm(df$Chance.of.Admit ~ ., data = df)
+summary(full_model)
+BIC(full_model)
+```
+
+```{r,results='asis'}
+stargazer(full_model, no.space=TRUE, single.row = TRUE, column.sep.width = "3pt", 
+          font.size = "small", dep.var.labels= "Chance of admit", 
+          covariate.labels=c("Gre score", "Toefl score", "University rating", 
+                             "Sop", "Lor", "GPA", "Research activity"), 
+          omit.stat=c("LL","ser","f"), header=FALSE)
+```
+
+From the full model linear regression result we can tell that after we add up all of the variables have a positive effect toward the chance of admit. Among all of variables, the GPA level seems contribute the most leverage toward higher chance of admit since it has the biggest coefficient. The impact of the University.rating and SOP is weaken than before and they actually didn't display have a significant impact toward the chance of admit now (p>0.05). Here, in terms of intervention, we can try to remove the University.Rating and SOP to see what's gonna change with our model now:
+```{r}
+NOT_full_model <- lm(df$Chance.of.Admit ~ GRE.Score+TOEFL.Score+LOR+CGPA+Research, data = df)
+summary(NOT_full_model)
+BIC(NOT_full_model)
+```
+
+It doesn't seem like the the result of the new model changed a lot by removing the University.Rating and SOP. The BIC is more smaller which is a good thing but the R-squared also reduced so I will say in general the new model don't have a significant change and we prefer to keep them in our model as confounding variables. 
+
+# 8.
+```{r}
+# individual coefficients in bivariate model:
+m1$coefficients
+m2$coefficients
+m3$coefficients
+m4$coefficients
+m5$coefficients
+m6$coefficients
+m7$coefficients
+
+# full model
+full_model <- lm(df$Chance.of.Admit ~ ., data = df)
+summary(full_model)
+```
+All of the coefficient of independent variables reduced in the muti-variables model. This infers that there might be some casual pathaways between independent variables so that each of them is affected by it and causing a overall coefficient decreasing. My independent variables might interact and affect each other in this case. For example, a applicator with higher GPA might get a more stronger LOR from his/her recommander; A student with a higher GRE/TOEFL score may have a better performance in SOP; A higher rating college might have a higher chance to offer students available research; A more complex scenario could be: an applicator with not only higher GPA but also good research activity will have a stronger LOR from his/her professors, and since he/she is good at studying, he/she might also have a higher likelihood to get good test score in the GRE/TOEFL test.
+
+Still, we will use the strength of SOP and the University rating for this question since these two variables no longer display a significance toward our dependent variable after we do the muti-vairbale linear regression. My infer would be there are probably some spurious or a chained causal pathway cases happened to these two variable.We first try to see if there is any connection between SOP and university rating: 
+```{r}
+lmq8<-lm(df$Chance.of.Admit~df$SOP+df$University.Rating)
+summary(lmq8)
+```
+
+Well, they look totally fine and we may say there is no spurious or a chained causal pathway between these two variables. Now, let's test SOP and University.Rating with other variables:
+```{R}
+lmq8.1<-lm(df$Chance.of.Admit~df$SOP+df$CGPA+df$TOEFL.Score+df$LOR)
+summary(lmq8.1)
+lmq8.2<-lm(df$Chance.of.Admit~df$University.Rating+df$CGPA+df$TOEFL.Score+df$LOR+df$Research)
+summary(lmq8.2)
+```
+
+For the SOP, we added the CGPA, TOEFL.Score and LOR; We added CGPA,TOEFL.Score,LOR and Research to the University.Rating. Both SOP and University.Rating no longer display a significance after we added those items and I would say these two cases both belong to spurious causal pathway relationship as we can't tell a very clear chained relationship between each items.
+
+# 9.
+
+I didn't expect the GRE&TOEFL Score and SOP would be so unimportant in the muti-variable model as I thought they are supposed to be highly valued by most of universities. On the other hand, the impact of the research activity is substantially weakened in the muti-variables model which is also out of my expectation. 
+
+# 10.
+
+By referring to the test book, we can know that similar $R^2$ and adjusted $R^2$($R^2$=0.8219;adj $R^2$=0.8194) tell us that our model doesn't over fit and the majority of the dependent variables (around 82%) can be explained by independent variables with the muti-variable linear regression model, and it also can tell that most of the independent variables in our model do have explanatory power. The ideal R^2 value also indicates that our model have a high accuracy. 
+
+# 11.
+
+we used a backward variables selection here to select the suitable variables:
+```{r}
+model <- regsubsets(Chance.of.Admit~ ., data = df, method="backward")
+sumresult <- summary(model)
+
+model.subsets <- cbind(sumresult$which, sumresult$bic, sumresult$rsq, sumresult$adjr2)
+model.subsets <- as.data.frame(model.subsets) 
+colnames(model.subsets)[9:11] <- c("BIC","R^2","adj R^2")
+# check result:
+model.subsets
+```
+
+The Model 5 with 5 variables gives the lowest BIC value, but it also reduced the $R^2$ value. On the other hand the 7 has the highest $R^2$ value. By referring to the text book, we can't really tell if we should select variables totally depend on the BIC/AIC or $R^2$, and by given the fact that chance of admitting might related to the SOP and undergraduate university rating we would stick with the origin full model in this case.
+
+# 12.
+
+My over all conclusion would be if an international students want to get admitted by the UCLA, his/her GPA must be high, a high GPA will boost the chance. And then if he/she had research experience with a strong LOR, it will also increase the chance. GPA is the most important thing for international applicators and then is research experience and strong LOR, if a applicator performs well in all these 4 things then hies/her chance to be admitted will be much higher. UCLA may not really value applicators undergraduate university rating and SOP strength by comparing to other features of an international applicator. The weakness of my data would be this data sets was collected and built long times ago in 2017 so it may not suitable to apply on current days UCLA application for prediction, on the other hand, some of variables from this data set were collected through questionnaire so there might be some subjective opinions from participates. I would say if we can get all of variables from UCLA official data sets would make our model better. 
+
+# 13.
+
+a.
+
+```{r}
+matrix1 <- as.matrix(cbind(df$GRE.Score,df$TOEFL.Score,df$University.Rating, df$SOP,df$LOR, df$CGPA, df$Research))
+matrix1 <- cbind(1, matrix1)
+
+solve( t(matrix1) %*% matrix1 )   %*%   t(matrix1) %*% df$Chance.of.Admit
+```
+
+The result we got here are all the same with what we got from muti-variable linear regression model.
+
+b.
+
+```{r}
+# CGPA coefficient
+gpacoe<-summary(full_model)$coefficients[7,1]
+# CGPA std error:
+gpastderror<-summary(full_model)$coefficients[7,2]
+# degree of freedom:
+dfr<-full_model$df.residual
+# our p value of CGPA here is exactly same as what we got in the previous muti-variable linear regression model
+2*pt(gpacoe/gpastderror, dfr, lower.tail = F)
+```
+
+c.
+
+```{r}
+# r^2
+ypred <- predict(full_model)
+# and the rest of it is done as we have done before:
+y <- df$Chance.of.Admit
+tss <- sum((y - mean(y))^2)
+sse <- sum((y-ypred)^2)
+(tss-sse)/tss
+
+
+#  adj r^2
+n <- length(y)
+k <- ncol(matrix1) - 1 
+dft <- n - 1
+dfe <- n - k - 1
+(tss/dft - sse/dfe) / (tss/dft)
+```
+
+Both of $R^2$ and adjusted $R^2$ are the same as what we got in the previous muti-variable linear regression model.
+
+d. 
+
+```{r}
+ypred <- predict(full_model)
+# and the rest of it is done as we have done before:
+y <- df$Chance.of.Admit
+tss <- sum((y - mean(y))^2)
+sse <- sum((y-ypred)^2)
+r2<-(tss-sse)/tss
+# get F stats
+f <- (r2/k) / ((1-r2)/(n-k-1))
+f
+pf(f, k, (n-k-1), lower.tail = F)
+```
+
+Again the F-statistic is the same as what we got in the previous muti-variable linear regression model. And by given the fact that the p value (8.209861e-180) is less than 2.2e-16, we say both F-statistic and p-value are the same as what we got from full model.
+
+# 14.
+
+```{r}
+# add the CGPA quadratic term
+new_model<-lm(df$Chance.of.Admit ~ I(CGPA^2)+ ., data = df)
+summary(new_model)
+```
+From this result we can tell that the $CGPA^2$ is not significant with a p value bigger than 0.05 and a negative coefficient. 
+```{r}
+# check the effect of a 1-unit increase in CGPA at its mean value
+# we ignore all of the other variables since they will remain unchanged
+
+v <- new_model$coefficients[8] * mean(df$CGPA) + new_model$coefficients[2] * (mean(df$CGPA))^2
+v1 <- new_model$coefficients[8] * (mean(df$CGPA) + 1) + new_model$coefficients[2] * (mean(df$CGPA) + 1)^2
+v1 - v
+```
+
+The result tells us that if we have 1-unit increase in mean value of the CGPA, the chance of admitting will increase 0.1115653 .
+
+# 15.
+```{r}
+# add interaction:
+new_model2<-lm(df$Chance.of.Admit ~ GRE.Score*LOR+ ., data = df)
+summary(new_model2)
+```
+
+From the result we can tell that the interaction between GRE.Score and LOR strength is not significant toward the chance of admitting.
+
+```{r}
+# check the effect of a 1-unit increase on one of these interaction items at its mean value
+# we add 1 on gre score
+# we ignore all of the other variables since they will remain unchanged
+
+v3 <- (new_model2$coefficients[2] + new_model2$coefficients[9] * mean(df$LOR)) * mean(df$GRE.Score)
+v4 <- (new_model2$coefficients[2] + new_model2$coefficients[9] * mean(df$LOR)) * mean(df$GRE.Score+1)
+v4 - v3
+```
+
+The result tells us that if we have 1-unit increase in mean value of the Gre score, in terms of interaction between gre score and strength of LOR, the chance of admitting will only increase 0.001847201.
+
+# 16.
+```{r}
+# we remove the Gre.Score in our reduced model:
+reduced_model<-lm(df$Chance.of.Admit ~ LOR+ CGPA+TOEFL.Score+University.Rating+SOP+Research, data = df)
+anova(reduced_model,new_model2)
+```
+```{r}
+r2c <- summary(new_model2)$r.squared
+r2r <- summary(reduced_model)$r.squared
+fstat <- ((r2c - r2r) / 2) / ((1 - r2c) / (500 - 8 - 1))
+fstat
+# we get same p-value here:
+pf(fstat,2,(500 - 8 - 1),lower.tail=F)
+```
+
+Since we have a p-value less than 0.05, we may say that by comparing to remove the GRE.score and interaction terms from the model, the complete model (```new_model2```) better. The Gre.score and $GRE.Score\times LOR$ should belong to the regression. 

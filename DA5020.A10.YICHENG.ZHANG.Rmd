@@ -1,0 +1,146 @@
+---
+title: "DA5020.A10.YICHENG.ZHANG"
+author: "YICHENG ZHANG"
+date: "2022-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,warning=FALSE,message=FALSE}
+library(dplyr)
+library(openintro)
+library(tidyverse)
+library(psych)
+library(leaps)
+```
+
+# 1.
+
+A confident interval reflects how effectively a parameter was determined. A 95% confidence interval, for instance, indicates that 95 events out of 100 occured inside a certain value range (population mean).If we want to explain more bluntly, a 95% CI, it means we knows that 95% of something will go as what we predicted in its respective CI range.A prediction interval specifies the predicted value range, and it is actually a type of CI with the application of predictions. However, a prediction interval may have a bigger coverage range than the CI even though the average prediction value (mean prediction) is the same. ONe of the main reason that cause what I just mentioned is that CI can displays the uncertainty of samples in quantities from many different data points and the increasing data size could actually reduce the uncertainty by thinning the CI interval; and for PI, it will maily employee data from top of the uncertainty or even only focus on just certain single value (not necessary though) and thus it will have a larger range than the CI. We prefer to use PI if we want to know specific predicted value.
+
+# 2.
+
+```{r}
+ncbirths
+# find na value:
+colSums(is.na(ncbirths))
+```
+```{r}
+# we now want to impute NA value with numerical median
+ncbi <- ncbirths %>% mutate_if(is.numeric, function(x) ifelse(is.na(x), median(x, na.rm = T), x))
+
+# see if we have NA now:
+# and we only have NA in the categorical value now
+colSums(is.na(ncbi))
+str(ncbi)
+```
+
+```{r}
+# now we want to change all categorical values into binary value: 1&0
+ncbi <- sapply(ncbi,as.numeric)
+# we have following columns with categorical values:
+# and we want to use dummy coding here:
+# convert categorical var to binary var
+ncbi[,c(3,5,7,10,11,12,13)] <- ncbi[,c(3,5,7,10,11,12,13)] - 1
+```
+```{r}
+# correlation matrix result:
+cor(ncbi, use='complete.obs')
+# visualization result:
+pairs.panels(ncbi)
+```
+
+In this question, we first want to determine if there are some muticolinary exist in the data and we find that from the result of the correlation matrix we can tell the correlation between fage and mage, mature and fage, weight&premie and weeks, weight and premie are all very high and by combining with its dtribution plot we might consider there are muticolinary in these cases. We normally want to find out muticollinary because the high multicollinearity will impact p-value and coefficients in the regression model.However, the muticollinary cases will not impact the predictions or goodness of fit. In terms of distribution, we have normal distribution for fage,visits, gained, weight and father's age; and we have uniform distribution for the martial, whitemom, mom's age and gender; and for the skewed distribution we have mature, weeks, premie, lowbirthweight and habit, most of them have such distribution due to categorical variable. Some variables may not be useful due to a really low correlation, for example, the mature has correlation with weight as -0.01, also for the weight and mage&fage is 0.06 which is also too small and may not be useful to the model. 
+
+# 3.
+
+```{r}
+ncbi<-as.data.frame(ncbi)
+model<- lm(weight ~ ., data = ncbi)
+summary(model)
+```
+
+From this result, we can tell that the Multiple R-squared: 0.6413, and adjusted R-squared:  0.6369 which are not bad and the similar value of these two indicate that our model is not overfitting and most of dependent variables can be explained by independent variables. It tells us that 64.13% of the variance in birth weight cases can be explained by our model. The moderate high R^2 also indicates that our model accuracy is ideal. The standard error here is 0.9068 which tells us that the average distance of each observation dot to our regression line is 0.9068 and this also indicates that our model has a high accuracy and the regression result is very ideal. The F-statistic is 146.4  and we have a p-value less than 2.2e-16 indicating statistically significant in this model. There are some p value for individual variables may not show a significance impact toward the birth weight since they have a p value larger than 0.05 and we might want to see if we should move them away from out model to increase our accuracy. 
+
+# 4.
+According to the assignment clarification, we are required to do the deletion and adding based on the coefficient of variable without using built in package we first select all of the variables with p value less than 0.05 from previous result to see how fits is our mode. we first have full models here for a back fitting, and this is a backward step wise selection:
+```{r}
+model<- lm(weight ~ ., data = ncbi)
+summary(model)
+```
+and we first remove the premie from the full model as it has the highest p value:
+```{r}
+m1<-lm(weight ~ fage+mage+mature+weeks+visits+marital+gained+lowbirthweight+gender+habit+whitemom ,data=ncbi)
+summary(m1)
+```
+
+Since the model now has less non-significant variables I would say our model improved by removing premie, but it looks like the there are still some variables with p larger than 0.05 here and we now want to remove the mature as it has biggest p value here:
+```{r}
+m2<-lm(weight ~fage+mage+weeks+visits+marital+gained+lowbirthweight+gender+habit+whitemom,data=ncbi)
+summary(m2)
+```
+
+Since the model now has less non-significant variables I would say our model improved by removing mature,now we need to remove the visits as it has the biggest p vlaue here:
+```{r}
+m3<-lm(weight ~fage+mage+weeks+marital+gained+lowbirthweight+gender+habit+whitemom,data=ncbi)
+summary(m3)
+```
+
+Since the model now has less non-significant variables I would say our model improved by removing visits, now it's time to remove the mage as it has biggest p value here:
+```{r}
+m4<-lm(weight ~fage+weeks+marital+gained+lowbirthweight+gender+habit+whitemom,data=ncbi)
+summary(m4)
+```
+Since the model now has less non-significant variables I would say our model improved by removing mage. From this output we can see that fage now turns into a p vlaue less than 0.05 but the marital still has a p value bigger than 0.05 so we remove the marital:
+
+```{r}
+m5<-lm(weight ~fage+weeks+gained+lowbirthweight+gender+habit+whitemom,data=ncbi)
+summary(m5)
+```
+The best model for this question will be the m5 ```weight ~ weeks+gained+lowbirthweight+gender+habit+whitemom+fage``` as it has the biggest R^2 and all variables' p values less than 0.05. 
+
+we can double check our result here by using the built-in function (this is only for double check!!) ```regsubsets```:
+```{r}
+# This is only to double check the result we had above!
+# we start by adding all of the elements into the model
+# and then we use a stepwise method to check each model's BIC and R^2
+# we used backward selection here:
+model2 <- regsubsets(weight~ ., data = ncbi, method="backward")
+sumresult <- summary(model2)
+
+model.subsets <- cbind(sumresult$which, sumresult$bic, sumresult$rsq, sumresult$adjr2)
+model.subsets <- as.data.frame(model.subsets) 
+colnames(model.subsets)[14:16] <- c("BIC","R^2","adj R^2")
+# check result:
+model.subsets
+```
+The creteria for a good model is low BIC value and high R^2 value, here we can see that we have a lowest BIC value for the model 7 and highest R^2 value for the model 8, and we know model 8 will not have all variables' p values less than 0.05 (the marital has a p vlaue larger than 0.05) as it is the same as m4 above. The model 7 from this output shows we have a smallest BIC value and only 0.001 R^2 less than model 8. So I would say the model 7 (m5) is the best model, and the conclusion is the same as what we had before. The mutiple regression model for this question is ```weight ~ weeks+gained+lowbirthweight+gender+habit+whitemom+fage```.
+
+# 5.
+```{r}
+# we use the model from last question:
+m5<- lm(weight ~ weeks+gained+lowbirthweight+gender+habit+whitemom+fage, data = ncbi)
+# re-coding the provided sample
+sample <- data.frame("fage"=40, "mage"=32, "mature"="mature mom", "weeks"=42, "premie"="full term", "visits"=12, "marital"="married", "gained"=22, "weight"=NA, "lowbirthweight"="not low", "gender" = "female", "habit" = "nonsmoker", "whitemom"="white")
+# paste the new data row into the entire dataset
+# and transfer to predict
+new_sample <- sapply(as_tibble(rbind(ncbirths, sample)), as.numeric)
+new_sample[,c(3,5,7,10,11,12,13)] <- new_sample[,c(3,5,7,10,11,12,13)] - 1
+# and the new data row is the last row which is row 1001
+predict(m5, as.data.frame(new_sample)[1001,])
+```
+
+```{r}
+# The 95% CI range
+predict(m5, newdata = as.data.frame(new_sample)[1001,],interval = 'confidence')
+```
+
+```{r}
+# The 95% PI range
+predict(m5, newdata = as.data.frame(new_sample)[1001,],interval = 'prediction')
+```
+
+From the result we can tell that based on the conditions offered by the question the weight of the new born baby will be 8.065206 lbs and we got a PI as the [6.281631,9.848782] which indicate the 95% individual weight can fall within this range. and CI as [7.91488, 8.215533] means that 95% of the population mean will lie in this range. As we mentioned before, that the Pi might have a wider range than the CI because it will include more uncertainties here.
